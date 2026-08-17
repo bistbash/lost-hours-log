@@ -3,24 +3,22 @@ name: thc-app
 services:
   db:
     image: postgres:16-alpine
-    container_name: thc-db
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-thc_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thc_secret}
       POSTGRES_DB: ${POSTGRES_DB:-thc_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-thc_user} -d ${POSTGRES_DB:-thc_db}"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" || exit 1"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 15
+      start_period: 60s
     restart: unless-stopped
 
   backend:
     build: ./backend
-    container_name: thc-backend
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-thc_user}:${POSTGRES_PASSWORD:-thc_secret}@db:5432/${POSTGRES_DB:-thc_db}
       PORT: 3000
@@ -31,7 +29,6 @@ services:
 
   frontend:
     build: ./frontend
-    container_name: thc-frontend
     ports:
       - "${APP_PORT:-8080}:80"
     depends_on:
