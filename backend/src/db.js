@@ -4,11 +4,22 @@ const { Pool } = pg;
 
 let pool;
 
+function poolConfig() {
+  if (process.env.DATABASE_URL) {
+    return { connectionString: process.env.DATABASE_URL };
+  }
+  return {
+    host: process.env.PGHOST || "db",
+    port: Number(process.env.PGPORT || 5432),
+    user: process.env.POSTGRES_USER || "thc_user",
+    password: process.env.POSTGRES_PASSWORD || "thc_secret",
+    database: process.env.POSTGRES_DB || "thc_db",
+  };
+}
+
 export function getPool() {
   if (!pool) {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-    });
+    pool = new Pool(poolConfig());
   }
   return pool;
 }

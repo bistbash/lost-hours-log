@@ -77,8 +77,8 @@ app.use((err, _req, res, next) => {
 async function start() {
   await waitForDb();
   await ensureSchema();
-  app.listen(PORT, () => {
-    console.log(`Backend listening on port ${PORT}`);
+  app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`Backend listening on 0.0.0.0:${PORT}`);
   });
 }
 

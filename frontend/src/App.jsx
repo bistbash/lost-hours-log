@@ -100,13 +100,36 @@ function unwrapLoaded(data) {
   return value;
 }
 
+async function readJson(res) {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`HTTP ${res.status} (not json)`);
+  }
+}
+
 async function storageGet(key) {
-  const res = await fetch(`/api/storage/${encodeURIComponent(key)}`, {
-    cache: "no-store",
-  });
+  const res = await fetch(`/api/storage/${encodeURIComponent(key)}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return unwrapLoaded(await res.json());
+  return unwrapLoaded(await readJson(res));
+}
+
+async function waitForApi(maxAttempts = 12, delayMs = 700) {
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch("/api/health");
+      if (res.ok) return;
+      lastErr = new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      lastErr = e;
+    }
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  throw lastErr || new Error("api unavailable");
 }
 
 const writeQueues = new Map();
@@ -124,7 +147,6 @@ async function storageSet(key, value) {
   return enqueueWrite(key, async () => {
     const res = await fetch(`/api/storage/${encodeURIComponent(key)}`, {
       method: "PUT",
-      cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value, wrapped: true }),
     });
@@ -1474,6 +1496,8 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
+        await waitForApi();
+        if (cancelled) return;
         const [s, t, i, exp, arch] = await Promise.all([
           storageGet("th-settings"),
           storageGet("th-entries-teachers"),
@@ -2137,6 +2161,10 @@ export default function App() {
           color: #8A2E2E;
           font-size: 13.5px;
           line-height: 1.5;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
         }
       `}</style>
 
@@ -2161,7 +2189,8 @@ export default function App() {
 
       {(loadError || saveError) && (
         <div className="thc-storage-banner" role="alert">
-          {loadError || saveError}
+          <span>{loadError || saveError}</span>
+          <button className="thc-ghost-btn" onClick={() => window.location.reload()}>נסה שוב</button>
         </div>
       )}
 
