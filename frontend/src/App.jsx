@@ -113,23 +113,8 @@ async function readJson(res) {
 async function storageGet(key) {
   const res = await fetch(`/api/storage/${encodeURIComponent(key)}`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`GET ${key}: HTTP ${res.status}`);
   return unwrapLoaded(await readJson(res));
-}
-
-async function waitForApi(maxAttempts = 12, delayMs = 700) {
-  let lastErr;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      const res = await fetch("/api/health");
-      if (res.ok) return;
-      lastErr = new Error(`HTTP ${res.status}`);
-    } catch (e) {
-      lastErr = e;
-    }
-    await new Promise((r) => setTimeout(r, delayMs));
-  }
-  throw lastErr || new Error("api unavailable");
 }
 
 const writeQueues = new Map();
@@ -1496,8 +1481,6 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        await waitForApi();
-        if (cancelled) return;
         const [s, t, i, exp, arch] = await Promise.all([
           storageGet("th-settings"),
           storageGet("th-entries-teachers"),
@@ -1518,7 +1501,8 @@ export default function App() {
       } catch (e) {
         console.error("load failed", e);
         if (!cancelled) {
-          setLoadError("לא ניתן לטעון את הנתונים מהשרת. השינויים במסך לא יישמרו עד שהחיבור יחזור.");
+          const detail = e && e.message ? ` (${e.message})` : "";
+          setLoadError(`לא ניתן להתחבר לשרת${detail}. בדוק שהשרת פועל, ואז לחץ נסה שוב.`);
         }
       } finally {
         if (!cancelled) setLoading(false);
