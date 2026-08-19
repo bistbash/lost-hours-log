@@ -33,7 +33,7 @@ export function getPool() {
   return pool;
 }
 
-export async function waitForDb(maxAttempts = 30, delayMs = 2000) {
+export async function waitForDb(maxAttempts = 10, delayMs = 2000) {
   const client = getPool();
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -41,7 +41,7 @@ export async function waitForDb(maxAttempts = 30, delayMs = 2000) {
       return;
     } catch (err) {
       if (attempt === maxAttempts) throw err;
-      console.log(`Database not ready (attempt ${attempt}/${maxAttempts}), retrying...`);
+      console.log(`Database not ready (attempt ${attempt}/${maxAttempts}): ${err.message}`);
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }

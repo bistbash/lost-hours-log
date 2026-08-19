@@ -113,6 +113,16 @@ async function readJson(res) {
 async function storageGet(key) {
   const res = await fetch(`/api/storage/${encodeURIComponent(key)}`);
   if (res.status === 404) return null;
+  if (res.status === 503) {
+    let msg = "המסד לא מוכן";
+    try {
+      const j = await res.json();
+      if (j && j.message) msg = j.message;
+    } catch { /* ignore */ }
+    const e = new Error(`DB לא מוכן (${msg})`);
+    e.retriable = true;
+    throw e;
+  }
   if (!res.ok) throw new Error(`GET ${key}: HTTP ${res.status}`);
   return unwrapLoaded(await readJson(res));
 }
@@ -1479,7 +1489,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const load = async (attempt = 1) => {
       try {
         const [s, t, i, exp, arch] = await Promise.all([
           storageGet("th-settings"),
@@ -1498,16 +1508,21 @@ export default function App() {
         if (Array.isArray(arch)) setArchives(arch);
         setHydrated(true);
         setLoadError("");
+        setLoading(false);
       } catch (e) {
-        console.error("load failed", e);
-        if (!cancelled) {
-          const detail = e && e.message ? ` (${e.message})` : "";
-          setLoadError(`לא ניתן להתחבר לשרת${detail}. בדוק שהשרת פועל, ואז לחץ נסה שוב.`);
+        console.error(`load failed (attempt ${attempt})`, e);
+        if (cancelled) return;
+        if (e && e.retriable && attempt < 15) {
+          setLoadError(`השרת מתאתחל... (ניסיון ${attempt})`);
+          setTimeout(() => { if (!cancelled) load(attempt + 1); }, 2000);
+          return;
         }
-      } finally {
-        if (!cancelled) setLoading(false);
+        const detail = e && e.message ? ` (${e.message})` : "";
+        setLoadError(`לא ניתן להתחבר לשרת${detail}. בדוק שהשרת פועל, ואז לחץ נסה שוב.`);
+        setLoading(false);
       }
-    })();
+    };
+    load();
     return () => { cancelled = true; };
   }, []);
 

@@ -9,10 +9,19 @@ import {
 } from "./db.js";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
+
+let dbReady = false;
+let dbError = null;
 
 app.use(cors());
 app.use(express.json({ limit: "50mb", strict: false }));
+
+app.use("/api", (_req, res, next) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.set("Pragma", "no-cache");
+  next();
+});
 
 function unwrapStorageBody(body) {
   if (
@@ -28,21 +37,36 @@ function unwrapStorageBody(body) {
 }
 
 app.get("/api/health", async (_req, res) => {
+  if (!dbReady) {
+    return res.status(200).json({
+      status: "starting",
+      db: "not_ready",
+      error: dbError ? String(dbError.message || dbError) : null,
+    });
+  }
   try {
     await pingDb();
-    res.json({ status: "ok" });
+    res.json({ status: "ok", db: "ready" });
   } catch (err) {
-    res.status(503).json({ status: "error", message: err.message });
+    res.status(200).json({
+      status: "degraded",
+      db: "error",
+      error: err.message,
+    });
   }
 });
 
-app.use("/api", (_req, res, next) => {
-  res.set("Cache-Control", "no-store, no-cache, must-revalidate");
-  res.set("Pragma", "no-cache");
-  next();
-});
+function requireDb(_req, res, next) {
+  if (!dbReady) {
+    return res.status(503).json({
+      error: "db_not_ready",
+      message: dbError ? String(dbError.message || dbError) : "database still initializing",
+    });
+  }
+  return next();
+}
 
-app.get("/api/storage/:key", async (req, res) => {
+app.get("/api/storage/:key", requireDb, async (req, res) => {
   try {
     const value = await getStorageValue(req.params.key);
     if (value === null) {
@@ -51,11 +75,11 @@ app.get("/api/storage/:key", async (req, res) => {
     res.json(value);
   } catch (err) {
     console.error("GET storage error:", err);
-    res.status(500).json({ error: "internal_error" });
+    res.status(500).json({ error: "internal_error", message: err.message });
   }
 });
 
-app.put("/api/storage/:key", async (req, res) => {
+app.put("/api/storage/:key", requireDb, async (req, res) => {
   try {
     if (req.body === undefined) {
       return res.status(400).json({ error: "missing_body" });
@@ -64,7 +88,7 @@ app.put("/api/storage/:key", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error("PUT storage error:", err);
-    res.status(500).json({ error: "internal_error" });
+    res.status(500).json({ error: "internal_error", message: err.message });
   }
 });
 
@@ -75,15 +99,23 @@ app.use((err, _req, res, next) => {
   return next(err);
 });
 
-async function start() {
-  await waitForDb();
-  await ensureSchema();
-  app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`Backend listening on 0.0.0.0:${PORT}`);
-  });
-}
-
-start().catch((err) => {
-  console.error("Failed to start backend:", err);
-  process.exit(1);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Backend listening on 0.0.0.0:${PORT}`);
 });
+
+(async function initDb() {
+  while (!dbReady) {
+    try {
+      console.log("Connecting to database...");
+      await waitForDb();
+      await ensureSchema();
+      dbReady = true;
+      dbError = null;
+      console.log("Database ready.");
+    } catch (err) {
+      dbError = err;
+      console.error("Database init failed, retrying in 5s:", err.message);
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+  }
+})();
