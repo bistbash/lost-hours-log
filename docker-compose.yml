@@ -4,13 +4,13 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-thc_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thc_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-thc_db}
+      POSTGRES_USER: thc_user
+      POSTGRES_PASSWORD: thc_secret
+      POSTGRES_DB: thc_db
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - thc_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" || exit 1"]
+      test: ["CMD-SHELL", "pg_isready -U thc_user -d thc_db || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 15
@@ -20,9 +20,9 @@ services:
   backend:
     build: ./backend
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-thc_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thc_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-thc_db}
+      POSTGRES_USER: thc_user
+      POSTGRES_PASSWORD: thc_secret
+      POSTGRES_DB: thc_db
       PGHOST: db
       PORT: 3000
     depends_on:
@@ -39,4 +39,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  thc_db_data:

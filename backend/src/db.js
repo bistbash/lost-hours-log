@@ -28,7 +28,12 @@ function poolConfig() {
 
 export function getPool() {
   if (!pool) {
-    pool = new Pool(poolConfig());
+    const cfg = poolConfig();
+    const { password, connectionString, ...safe } = cfg;
+    console.log("DB config:", safe.host
+      ? `host=${safe.host} port=${safe.port} user=${safe.user} db=${safe.database}`
+      : `connectionString=${(connectionString || "").replace(/:[^:@/]+@/, ":****@")}`);
+    pool = new Pool(cfg);
   }
   return pool;
 }
