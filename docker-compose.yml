@@ -9,8 +9,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-thc_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - thc
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" || exit 1"]
       interval: 5s
@@ -26,35 +24,19 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-thc_secret}
       POSTGRES_DB: ${POSTGRES_DB:-thc_db}
       PGHOST: db
-      DATABASE_URL: postgres://${POSTGRES_USER:-thc_user}:${POSTGRES_PASSWORD:-thc_secret}@db:5432/${POSTGRES_DB:-thc_db}
       PORT: 3000
-    networks:
-      - thc
     depends_on:
       db:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "node", "src/healthcheck.js"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 40s
     restart: unless-stopped
 
   frontend:
     build: ./frontend
     ports:
       - "${APP_PORT:-8080}:80"
-    networks:
-      - thc
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     restart: unless-stopped
 
 volumes:
   postgres_data:
-
-networks:
-  thc:
-    driver: bridge

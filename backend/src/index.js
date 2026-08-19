@@ -5,6 +5,7 @@ import {
   getStorageValue,
   setStorageValue,
   waitForDb,
+  pingDb,
 } from "./db.js";
 
 const app = express();
@@ -28,7 +29,7 @@ function unwrapStorageBody(body) {
 
 app.get("/api/health", async (_req, res) => {
   try {
-    await getStorageValue("__health__");
+    await pingDb();
     res.json({ status: "ok" });
   } catch (err) {
     res.status(503).json({ status: "error", message: err.message });

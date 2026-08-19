@@ -5,15 +5,24 @@ const { Pool } = pg;
 let pool;
 
 function poolConfig() {
+  if (process.env.PGHOST || process.env.POSTGRES_USER || process.env.POSTGRES_PASSWORD) {
+    return {
+      host: process.env.PGHOST || "db",
+      port: Number(process.env.PGPORT || 5432),
+      user: process.env.POSTGRES_USER || "thc_user",
+      password: process.env.POSTGRES_PASSWORD || "thc_secret",
+      database: process.env.POSTGRES_DB || "thc_db",
+    };
+  }
   if (process.env.DATABASE_URL) {
     return { connectionString: process.env.DATABASE_URL };
   }
   return {
-    host: process.env.PGHOST || "db",
-    port: Number(process.env.PGPORT || 5432),
-    user: process.env.POSTGRES_USER || "thc_user",
-    password: process.env.POSTGRES_PASSWORD || "thc_secret",
-    database: process.env.POSTGRES_DB || "thc_db",
+    host: "db",
+    port: 5432,
+    user: "thc_user",
+    password: "thc_secret",
+    database: "thc_db",
   };
 }
 
@@ -36,6 +45,10 @@ export async function waitForDb(maxAttempts = 30, delayMs = 2000) {
       await new Promise((r) => setTimeout(r, delayMs));
     }
   }
+}
+
+export async function pingDb() {
+  await getPool().query("SELECT 1");
 }
 
 export async function ensureSchema() {
