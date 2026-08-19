@@ -46,11 +46,12 @@ export async function getStorageValue(key) {
 }
 
 export async function setStorageValue(key, value) {
+  const payload = value === undefined ? null : value;
   await getPool().query(
     `INSERT INTO app_storage (key, value, updated_at)
      VALUES ($1, $2::jsonb, NOW())
      ON CONFLICT (key)
      DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-    [key, JSON.stringify(value)]
+    [key, JSON.stringify(payload)]
   );
 }

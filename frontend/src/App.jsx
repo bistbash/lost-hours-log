@@ -79,30 +79,58 @@ const SKY_BANNER_URI = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDA
 
 const PALETTE = ["#1B2A4A", "#2E6DA4", "#E8821E", "#5FA8DC", "#F5B942", "#3C5A78", "#8FBEE0", "#C96A1E"];
 
-async function storageGet(key) {
-  try {
-    const res = await fetch(`/api/storage/${encodeURIComponent(key)}`);
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (e) {
-    console.error("storage get failed", key, e);
-    return null;
+function normalizeLoaded(data) {
+  if (typeof data === "string") {
+    try { return JSON.parse(data); } catch { return data; }
   }
+  return data;
 }
+
+function unwrapLoaded(data) {
+  const value = normalizeLoaded(data);
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    value.wrapped === true &&
+    Object.prototype.hasOwnProperty.call(value, "value")
+  ) {
+    return value.value;
+  }
+  return value;
+}
+
+async function storageGet(key) {
+  const res = await fetch(`/api/storage/${encodeURIComponent(key)}`, {
+    cache: "no-store",
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return unwrapLoaded(await res.json());
+}
+
+const writeQueues = new Map();
+
+function enqueueWrite(key, fn) {
+  const prev = writeQueues.get(key) || Promise.resolve();
+  const next = prev.then(fn, fn);
+  writeQueues.set(key, next.catch((err) => {
+    console.error("storage set failed", key, err);
+  }));
+  return next;
+}
+
 async function storageSet(key, value) {
-  try {
+  return enqueueWrite(key, async () => {
     const res = await fetch(`/api/storage/${encodeURIComponent(key)}`, {
       method: "PUT",
+      cache: "no-store",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(value),
+      body: JSON.stringify({ value, wrapped: true }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return true;
-  } catch (e) {
-    console.error("storage set failed", key, e);
-    return false;
-  }
+  });
 }
 
 function exportCSV(entries, filename) {
@@ -1420,6 +1448,9 @@ const ALL_TABS = [
 export default function App() {
   const [role, setRole] = useState("coordinator"); // coordinator | manager
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [hydrated, setHydrated] = useState(false);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [teacherEntries, setTeacherEntries] = useState([]);
   const [instructorEntries, setInstructorEntries] = useState([]);
@@ -1440,92 +1471,86 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const [s, t, i, exp, arch] = await Promise.all([
-        storageGet("th-settings"),
-        storageGet("th-entries-teachers"),
-        storageGet("th-entries-instructors"),
-        storageGet("th-last-export"),
-        storageGet("th-archives"),
-      ]);
-      if (s) {
-        const merged = { ...DEFAULT_SETTINGS, ...s };
-        setSettings(merged);
-        if (JSON.stringify(merged) !== JSON.stringify(s)) await storageSet("th-settings", merged);
-      } else {
-        await storageSet("th-settings", DEFAULT_SETTINGS);
+      try {
+        const [s, t, i, exp, arch] = await Promise.all([
+          storageGet("th-settings"),
+          storageGet("th-entries-teachers"),
+          storageGet("th-entries-instructors"),
+          storageGet("th-last-export"),
+          storageGet("th-archives"),
+        ]);
+        if (cancelled) return;
+        if (s && typeof s === "object" && !Array.isArray(s)) {
+          setSettings({ ...DEFAULT_SETTINGS, ...s });
+        }
+        if (Array.isArray(t)) setTeacherEntries(t);
+        if (Array.isArray(i)) setInstructorEntries(i);
+        if (exp != null) setLastExportAt(exp);
+        if (Array.isArray(arch)) setArchives(arch);
+        setHydrated(true);
+        setLoadError("");
+      } catch (e) {
+        console.error("load failed", e);
+        if (!cancelled) {
+          setLoadError("לא ניתן לטעון את הנתונים מהשרת. השינויים במסך לא יישמרו עד שהחיבור יחזור.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      if (t) setTeacherEntries(t);
-      if (i) setInstructorEntries(i);
-      if (exp) setLastExportAt(exp);
-      if (arch) setArchives(arch);
-      setLoading(false);
     })();
+    return () => { cancelled = true; };
   }, []);
 
-  const updateSettings = useCallback(async (next) => {
+  const persist = useCallback((key, value) => {
+    storageSet(key, value)
+      .then(() => setSaveError(""))
+      .catch((e) => {
+        console.error("persist failed", key, e);
+        setSaveError("שמירת הנתונים לשרת נכשלה. בדוק את החיבור ונסה שוב.");
+      });
+  }, []);
+
+  useEffect(() => { if (hydrated) persist("th-settings", settings); }, [hydrated, settings, persist]);
+  useEffect(() => { if (hydrated) persist("th-entries-teachers", teacherEntries); }, [hydrated, teacherEntries, persist]);
+  useEffect(() => { if (hydrated) persist("th-entries-instructors", instructorEntries); }, [hydrated, instructorEntries, persist]);
+  useEffect(() => { if (hydrated) persist("th-archives", archives); }, [hydrated, archives, persist]);
+  useEffect(() => {
+    if (!hydrated || lastExportAt == null) return;
+    persist("th-last-export", lastExportAt);
+  }, [hydrated, lastExportAt, persist]);
+
+  const updateSettings = useCallback((next) => {
     setSettings(next);
-    await storageSet("th-settings", next);
   }, []);
 
-  const addTeacherEntry = useCallback(async (entry) => {
-    setTeacherEntries((prev) => {
-      const next = [...prev, entry];
-      storageSet("th-entries-teachers", next);
-      return next;
-    });
+  const addTeacherEntry = useCallback((entry) => {
+    setTeacherEntries((prev) => [...prev, entry]);
   }, []);
-  const addInstructorEntry = useCallback(async (entry) => {
-    setInstructorEntries((prev) => {
-      const next = [...prev, entry];
-      storageSet("th-entries-instructors", next);
-      return next;
-    });
+  const addInstructorEntry = useCallback((entry) => {
+    setInstructorEntries((prev) => [...prev, entry]);
   }, []);
   const deleteTeacherEntry = useCallback((id) => {
-    setTeacherEntries((prev) => {
-      const next = prev.filter((e) => e.id !== id);
-      storageSet("th-entries-teachers", next);
-      return next;
-    });
+    setTeacherEntries((prev) => prev.filter((e) => e.id !== id));
   }, []);
   const deleteInstructorEntry = useCallback((id) => {
-    setInstructorEntries((prev) => {
-      const next = prev.filter((e) => e.id !== id);
-      storageSet("th-entries-instructors", next);
-      return next;
-    });
+    setInstructorEntries((prev) => prev.filter((e) => e.id !== id));
   }, []);
   const deleteManyTeacherEntries = useCallback((ids) => {
     const idSet = new Set(ids);
-    setTeacherEntries((prev) => {
-      const next = prev.filter((e) => !idSet.has(e.id));
-      storageSet("th-entries-teachers", next);
-      return next;
-    });
+    setTeacherEntries((prev) => prev.filter((e) => !idSet.has(e.id)));
   }, []);
   const deleteManyInstructorEntries = useCallback((ids) => {
     const idSet = new Set(ids);
-    setInstructorEntries((prev) => {
-      const next = prev.filter((e) => !idSet.has(e.id));
-      storageSet("th-entries-instructors", next);
-      return next;
-    });
+    setInstructorEntries((prev) => prev.filter((e) => !idSet.has(e.id)));
   }, []);
 
   const updateTeacherEntry = useCallback((id, updated) => {
-    setTeacherEntries((prev) => {
-      const next = prev.map((e) => (e.id === id ? { ...e, ...updated, id } : e));
-      storageSet("th-entries-teachers", next);
-      return next;
-    });
+    setTeacherEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...updated, id } : e)));
   }, []);
   const updateInstructorEntry = useCallback((id, updated) => {
-    setInstructorEntries((prev) => {
-      const next = prev.map((e) => (e.id === id ? { ...e, ...updated, id } : e));
-      storageSet("th-entries-instructors", next);
-      return next;
-    });
+    setInstructorEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...updated, id } : e)));
   }, []);
 
   const handleCreateArchive = useCallback((label) => {
@@ -1536,48 +1561,30 @@ export default function App() {
       teacherEntries: JSON.parse(JSON.stringify(teacherEntries)),
       instructorEntries: JSON.parse(JSON.stringify(instructorEntries)),
     };
-    setArchives((prev) => {
-      const next = [...prev, snapshot];
-      storageSet("th-archives", next);
-      return next;
-    });
+    setArchives((prev) => [...prev, snapshot]);
   }, [teacherEntries, instructorEntries]);
 
   const handleDeleteArchive = useCallback((id) => {
-    setArchives((prev) => {
-      const next = prev.filter((a) => a.id !== id);
-      storageSet("th-archives", next);
-      return next;
-    });
+    setArchives((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
   const handleExportBackup = useCallback(() => {
     exportBackupXLSX(teacherEntries, instructorEntries, "גיבוי-שעות-איבוד.xlsx");
-    const now = Date.now();
-    setLastExportAt(now);
-    storageSet("th-last-export", now);
+    setLastExportAt(Date.now());
   }, [teacherEntries, instructorEntries]);
 
   const importEntries = useCallback((kind, rows) => {
     const withIds = rows.map((r) => ({ ...r, id: uid() }));
     if (kind === "teachers") {
-      setTeacherEntries((prev) => {
-        const next = [...prev, ...withIds];
-        storageSet("th-entries-teachers", next);
-        return next;
-      });
+      setTeacherEntries((prev) => [...prev, ...withIds]);
     } else {
-      setInstructorEntries((prev) => {
-        const next = [...prev, ...withIds];
-        storageSet("th-entries-instructors", next);
-        return next;
-      });
+      setInstructorEntries((prev) => [...prev, ...withIds]);
     }
     setSettings((prev) => {
       const nameKey = kind === "teachers" ? "teacherNames" : "instructorNames";
       const reasonKey = kind === "teachers" ? "teacherReasons" : "instructorReasons";
       const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
-      const next = {
+      return {
         ...prev,
         [nameKey]: uniq([...prev[nameKey], ...rows.map((r) => r.name)]),
         subjects: uniq([...prev.subjects, ...rows.map((r) => r.subject)]),
@@ -1585,8 +1592,6 @@ export default function App() {
         [reasonKey]: uniq([...prev[reasonKey], ...rows.map((r) => r.reason)]),
         parallels: uniq([...prev.parallels, ...rows.map((r) => r.parallel)]),
       };
-      storageSet("th-settings", next);
-      return next;
     });
   }, []);
 
@@ -2124,6 +2129,15 @@ export default function App() {
         .thc-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 80px 0; color: var(--ink-soft); }
         .thc-spin { animation: thc-spin 1s linear infinite; }
         @keyframes thc-spin { to { transform: rotate(360deg); } }
+        .thc-storage-banner {
+          margin: 12px 22px 0;
+          padding: 10px 14px;
+          border-radius: 8px;
+          background: #FDECEC;
+          color: #8A2E2E;
+          font-size: 13.5px;
+          line-height: 1.5;
+        }
       `}</style>
 
       <div className="thc-header" style={{ backgroundImage: `url(${SKY_BANNER_URI})` }}>
@@ -2144,6 +2158,12 @@ export default function App() {
           </button>
         </div>
       </div>
+
+      {(loadError || saveError) && (
+        <div className="thc-storage-banner" role="alert">
+          {loadError || saveError}
+        </div>
+      )}
 
       <div className="thc-tabs">
         {visibleTabs.map((t) => {
