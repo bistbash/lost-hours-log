@@ -225,3 +225,32 @@ html, body { margin: 0; background: #EEF2F7; }
   .thc-root .thc-kpis .thc-stat-value { font-size: 22px; }
   .thc-kpi-text { font-size: 17px; }
 }
+
+/* Search fields: the inline `.thc-field input` / global focus rules must not reach these.
+   Room on the right for the magnifier, on the left for the clear button. */
+.thc-root .thc-picker-box input,
+.thc-root .thc-field .thc-picker-box input,
+.thc-root .thc-people-search input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 36px 9px 34px;
+  font-size: 14px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+}
+.thc-root .thc-picker-box input:focus,
+.thc-root .thc-people-search input:focus {
+  outline: none;
+  border-color: #2E6DA4;
+  box-shadow: 0 0 0 3px rgba(46,109,164,0.18);
+}
+.thc-root .thc-picker-icon,
+.thc-root .thc-people-search > svg { right: 12px; top: 50%; transform: translateY(-50%); position: absolute; pointer-events: none; }
+.thc-root .thc-picker-clear { left: 9px; top: 50%; transform: translateY(-50%); }
+/* Inside the entry form grid the picker fills its cell instead of forcing 220px. */
+.thc-root .thc-field .thc-picker { min-width: 0; width: 100%; }
+.thc-root .thc-field .thc-picker-list { min-width: 220px; }
