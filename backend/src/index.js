@@ -1,11 +1,17 @@
 import express from "express";
 import cors from "cors";
 import {
+  applyArchiveOps,
+  applyEntryOps,
   ensureSchema,
+  getState,
   getStorageValue,
-  setStorageValue,
-  waitForDb,
+  getVersion,
+  mergeSettings,
   pingDb,
+  setStorageValue,
+  snapshotIfDue,
+  waitForDb,
 } from "./db.js";
 
 const app = express();
@@ -23,6 +29,11 @@ app.use("/api", (_req, res, next) => {
   next();
 });
 
+/** The only keys the app stores. Anything else is refused. */
+const KNOWN_KEYS = new Set(["th-settings", "th-entries-teachers", "th-entries-instructors", "th-last-export", "th-archives"]);
+/** Lists that are only changed through operations, so two people editing at once never overwrite each other. */
+const OPS_ONLY_KEYS = new Set(["th-entries-teachers", "th-entries-instructors", "th-archives"]);
+
 function unwrapStorageBody(body) {
   if (
     body &&
@@ -35,6 +46,26 @@ function unwrapStorageBody(body) {
   }
   return body;
 }
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** Wraps an async handler: HttpError -> its status, anything else -> 500. */
+const route = (fn) => async (req, res) => {
+  try {
+    await fn(req, res);
+  } catch (err) {
+    if (err instanceof HttpError || err.status) {
+      return res.status(err.status).json({ error: "bad_request", message: err.message });
+    }
+    console.error(`${req.method} ${req.path} error:`, err);
+    res.status(500).json({ error: "internal_error", message: err.message });
+  }
+};
 
 app.get("/api/health", async (_req, res) => {
   if (!dbReady) {
@@ -66,31 +97,59 @@ function requireDb(_req, res, next) {
   return next();
 }
 
-app.get("/api/storage/:key", requireDb, async (req, res) => {
-  try {
-    const value = await getStorageValue(req.params.key);
-    if (value === null) {
-      return res.status(404).json({ error: "not_found" });
-    }
-    res.json(value);
-  } catch (err) {
-    console.error("GET storage error:", err);
-    res.status(500).json({ error: "internal_error", message: err.message });
-  }
-});
+/** Everything the app shows, in one request, with the version used to notice changes by others. */
+app.get("/api/state", requireDb, route(async (_req, res) => {
+  res.json(await getState());
+}));
 
-app.put("/api/storage/:key", requireDb, async (req, res) => {
-  try {
-    if (req.body === undefined) {
-      return res.status(400).json({ error: "missing_body" });
-    }
-    await setStorageValue(req.params.key, unwrapStorageBody(req.body));
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("PUT storage error:", err);
-    res.status(500).json({ error: "internal_error", message: err.message });
+/** Cheap poll: the latest change time across all keys. */
+app.get("/api/version", requireDb, route(async (_req, res) => {
+  res.json({ version: await getVersion() });
+}));
+
+const ENTRY_KIND = { teachers: "th-entries-teachers", instructors: "th-entries-instructors" };
+
+/** Body: { add?: Entry[], update?: Entry[] (by id), remove?: id[] }. Applied atomically on the server. */
+app.post("/api/entries/:kind/ops", requireDb, route(async (req, res) => {
+  const key = ENTRY_KIND[req.params.kind];
+  if (!key) throw new HttpError(404, "unknown list");
+  res.json(await applyEntryOps(key, req.body || {}));
+}));
+
+/** Body: { add?: Archive[], remove?: id[] }. */
+app.post("/api/archives/ops", requireDb, route(async (req, res) => {
+  res.json(await applyArchiveOps(req.body || {}));
+}));
+
+/** Body: a partial settings object; its top-level keys replace the stored ones. */
+app.patch("/api/settings", requireDb, route(async (req, res) => {
+  const patch = req.body;
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new HttpError(400, "settings patch must be an object");
+  res.json(await mergeSettings(patch));
+}));
+
+app.get("/api/storage/:key", requireDb, route(async (req, res) => {
+  if (!KNOWN_KEYS.has(req.params.key)) throw new HttpError(404, "unknown key");
+  const value = await getStorageValue(req.params.key);
+  if (value === null) {
+    return res.status(404).json({ error: "not_found" });
   }
-});
+  res.json(value);
+}));
+
+app.put("/api/storage/:key", requireDb, route(async (req, res) => {
+  const key = req.params.key;
+  if (!KNOWN_KEYS.has(key)) throw new HttpError(404, "unknown key");
+  // Tabs still running the old version saved whole lists, which wiped other people's changes.
+  if (OPS_ONLY_KEYS.has(key)) {
+    return res.status(409).json({ error: "outdated_client", message: "המערכת עודכנה. רעננו את הדף (F5) כדי להמשיך לשמור." });
+  }
+  if (req.body === undefined) {
+    return res.status(400).json({ error: "missing_body" });
+  }
+  await setStorageValue(key, unwrapStorageBody(req.body));
+  res.json({ ok: true });
+}));
 
 app.use((err, _req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
@@ -102,6 +161,15 @@ app.use((err, _req, res, next) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Backend listening on 0.0.0.0:${PORT}`);
 });
+
+async function runSnapshots() {
+  try {
+    const taken = await snapshotIfDue();
+    if (taken) console.log(`Daily snapshot saved (${taken} keys).`);
+  } catch (err) {
+    console.error("Snapshot failed:", err.message);
+  }
+}
 
 (async function initDb() {
   while (!dbReady) {
@@ -118,4 +186,6 @@ app.listen(PORT, "0.0.0.0", () => {
       await new Promise((r) => setTimeout(r, 5000));
     }
   }
+  await runSnapshots();
+  setInterval(runSnapshots, 6 * 60 * 60 * 1000);
 })();
