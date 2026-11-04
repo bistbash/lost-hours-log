@@ -254,3 +254,14 @@ html, body { margin: 0; background: #EEF2F7; }
 /* Inside the entry form grid the picker fills its cell instead of forcing 220px. */
 .thc-root .thc-field .thc-picker { min-width: 0; width: 100%; }
 .thc-root .thc-field .thc-picker-list { min-width: 220px; }
+
+/* Backup button in the header */
+.thc-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; position: relative; z-index: 1; }
+.thc-backup-btn {
+  display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border: none; border-radius: 999px;
+  background: var(--gold); color: #241C05; font-family: 'Assistant', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(16,26,48,0.25);
+}
+.thc-backup-btn:hover:not(:disabled) { filter: brightness(1.06); }
+.thc-backup-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.thc-backup-btn:disabled { opacity: 0.6; cursor: not-allowed; }

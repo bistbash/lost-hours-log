@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Users, GraduationCap, BarChart3, Settings as SettingsIcon, Trophy,
-  Plus, Trash2, Download, X, Eye, Pencil, Loader2, ChevronDown, Upload, Check,
+  Plus, Trash2, Download, X, Eye, Pencil, Loader2, ChevronDown, Upload, Check, DatabaseBackup,
   LayoutDashboard, AlertTriangle, CloudDownload, Clock, TrendingUp, Flag, CalendarDays, Archive as ArchiveIcon, UserSearch
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { archiveOps, entryOps, fetchState, fetchVersion, patchSettings, saveLastExport } from "./lib/api.js";
-import { fmt, inRange, people as peopleOf, searchKey } from "./lib/stats.js";
+import { DAY_COLORS, MONTH_COLORS, fmt, inRange, people as peopleOf, searchKey } from "./lib/stats.js";
+import { downloadBackup } from "./lib/backupReport.js";
 import { NamePicker, RangeBar } from "./components/ui.jsx";
 import ReportsTab from "./components/ReportsTab.jsx";
 import PeopleTab from "./components/PeopleTab.jsx";
@@ -36,21 +37,6 @@ const monthKeyLabel = (key) => {
   const [y, m] = key.split("-");
   return `${MONTH_NAMES[parseInt(m, 10) - 1]} '${y.slice(2)}`;
 };
-const DAY_COLORS = {
-  "ראשון": { bg: "#FBDADA", fg: "#8A2E2E" },
-  "שני":   { bg: "#D6E8F7", fg: "#1F4E79" },
-  "שלישי": { bg: "#FBE7C6", fg: "#7A5A10" },
-  "רביעי": { bg: "#D9F2D9", fg: "#2C6B2C" },
-  "חמישי": { bg: "#E6D9F2", fg: "#5A2E82" },
-  "שישי":  { bg: "#D6F0F0", fg: "#1F6B6B" },
-  "שבת":   { bg: "#E7E7E7", fg: "#4A4A4A" },
-};
-const MONTH_COLORS = [
-  { bg: "#FBDADA", fg: "#8A2E2E" }, { bg: "#FBE7C6", fg: "#7A5A10" }, { bg: "#F7F0C6", fg: "#6B5E10" },
-  { bg: "#D9F2D9", fg: "#2C6B2C" }, { bg: "#D6F0F0", fg: "#1F6B6B" }, { bg: "#D6E8F7", fg: "#1F4E79" },
-  { bg: "#DDD9F2", fg: "#3C2E82" }, { bg: "#E6D9F2", fg: "#5A2E82" }, { bg: "#F2D9EC", fg: "#822E6E" },
-  { bg: "#F2D9DD", fg: "#822E44" }, { bg: "#EAD9C6", fg: "#6B4A10" }, { bg: "#D9E0D0", fg: "#3E5A2C" },
-];
 const dayBadgeStyle = (day) => {
   const c = DAY_COLORS[day] || { bg: "#EEE", fg: "#555" };
   return { background: c.bg, color: c.fg };
@@ -99,23 +85,6 @@ function exportCSV(entries, filename) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-function buildSheetAOA(entries) {
-  const headers = ["שם", "מקצוע", "שכבה", "מספר כיתה", "תאריך", "יום", "חודש", "שעות", "סיבה", "הערה"];
-  const rows = entries.map((e) => [
-    e.name, e.subject, e.grade, e.parallel, e.date, dayOfWeekHebrew(e.date), monthHebrew(e.date), e.hours, e.reason, e.comment,
-  ]);
-  return [headers, ...rows];
-}
-
-function exportBackupXLSX(teacherEntries, instructorEntries, filename) {
-  const wb = XLSX.utils.book_new();
-  const wsTeachers = XLSX.utils.aoa_to_sheet(buildSheetAOA(teacherEntries));
-  const wsInstructors = XLSX.utils.aoa_to_sheet(buildSheetAOA(instructorEntries));
-  XLSX.utils.book_append_sheet(wb, wsTeachers, "מורים");
-  XLSX.utils.book_append_sheet(wb, wsInstructors, "מדריכים");
-  XLSX.writeFile(wb, filename);
 }
 
 /* ------------------------------------------------------------------ */
@@ -399,10 +368,11 @@ function ImportPanel({ onConfirm, colorAccent, sheetHint, existingEntries = [] }
     setParseError("");
     try {
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array", cellDates: true });
+      const wb = XLSX.read(buf, { type: "array" }); // Dates stay Excel serials: cellDates shifts them a day back in Israel.
       setWorkbook(wb);
       setSheetNames(wb.SheetNames);
-      const guess = sheetHint && wb.SheetNames.find((n) => n.includes(sheetHint));
+      const hinted = sheetHint ? wb.SheetNames.filter((n) => n.includes(sheetHint)) : [];
+      const guess = hinted.find((n) => n.includes("רשומות")) || hinted[0];
       const chosen = guess || wb.SheetNames[0];
       setSelectedSheet(chosen);
       parseSheet(wb, chosen);
@@ -1004,7 +974,7 @@ function suggestSchoolYearLabel() {
   return heb ? `${heb} (${gregLabel})` : `שנת הלימודים ${gregLabel}`;
 }
 
-function ArchiveTab({ teacherEntries, instructorEntries, archives, onCreate, onDelete }) {
+function ArchiveTab({ teacherEntries, instructorEntries, archives, onCreate, onDelete, onExport }) {
   const [label, setLabel] = useState(suggestSchoolYearLabel());
   const [confirmCreate, setConfirmCreate] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -1068,7 +1038,7 @@ function ArchiveTab({ teacherEntries, instructorEntries, archives, onCreate, onD
                     <span className="thc-archive-meta">{total} רשומות · {hours} שעות · נשמר בתאריך {dateStr}</span>
                   </div>
                   <div className="thc-archive-actions">
-                    <button className="thc-ghost-btn" onClick={() => exportBackupXLSX(a.teacherEntries, a.instructorEntries, `ארכיון-${a.label}.xlsx`)}>
+                    <button className="thc-ghost-btn" onClick={() => onExport(a)}>
                       <Download size={14} /> ייצוא לאקסל
                     </button>
                     <button className="thc-icon-btn" onClick={() => setConfirmDeleteId(a.id)} aria-label="מחק ארכיון">
@@ -1151,6 +1121,7 @@ export default function App() {
   const [teacherEntries, setTeacherEntries] = useState([]);
   const [instructorEntries, setInstructorEntries] = useState([]);
   const [lastExportAt, setLastExportAt] = useState(null);
+  const [backingUp, setBackingUp] = useState(false);
   const [archives, setArchives] = useState([]);
   const [personFocus, setPersonFocus] = useState(null);
   const [undo, setUndo] = useState(null);
@@ -1309,12 +1280,36 @@ export default function App() {
     write(() => archiveOps({ remove: [id] }));
   }, [write]);
 
-  const handleExportBackup = useCallback(() => {
-    exportBackupXLSX(teacherEntries, instructorEntries, "גיבוי-שעות-איבוד.xlsx");
-    const now = Date.now();
-    setLastExportAt(now);
-    write(() => saveLastExport(now));
-  }, [teacherEntries, instructorEntries, write]);
+  /** Builds a report file; the button shows progress, and failures appear in the error banner. */
+  const runBackup = useCallback(async (report) => {
+    setBackingUp(true);
+    try {
+      await downloadBackup({ alertThreshold: settings.alertThreshold, ...report });
+      return true;
+    } catch (e) {
+      console.error("backup failed", e);
+      setSaveError("יצירת קובץ הגיבוי נכשלה. נסו שוב.");
+      return false;
+    } finally {
+      setBackingUp(false);
+    }
+  }, [settings.alertThreshold]);
+
+  const handleExportBackup = useCallback(async () => {
+    const now = new Date();
+    const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const done = await runBackup({ teacherEntries, instructorEntries, filename: `גיבוי-שעות-איבוד-${stamp}.xlsx` });
+    if (!done) return;
+    setLastExportAt(now.getTime());
+    write(() => saveLastExport(now.getTime()));
+  }, [teacherEntries, instructorEntries, runBackup, write]);
+
+  const handleExportArchive = useCallback((archive) => runBackup({
+    teacherEntries: archive.teacherEntries,
+    instructorEntries: archive.instructorEntries,
+    label: `ארכיון: ${archive.label}`,
+    filename: `ארכיון-${archive.label}.xlsx`,
+  }), [runBackup]);
 
   const importEntries = useCallback((kind, rows) => {
     addEntries(kind, rows.map((r) => ({ ...r, id: uid() })));
@@ -1900,13 +1895,25 @@ export default function App() {
             <p className="thc-credit">פותח ע"י צוות תפעול הדרכה</p>
           </div>
         </div>
-        <div className="thc-role-switch">
-          <button className={role === "coordinator" ? "active" : ""} onClick={() => setRole("coordinator")}>
-            <Pencil size={14} /> רכז/ת מערכת
+        <div className="thc-header-actions">
+          <button
+            type="button"
+            className="thc-backup-btn"
+            onClick={handleExportBackup}
+            disabled={loading || backingUp || teacherEntries.length + instructorEntries.length === 0}
+            title={lastExportAt ? `גיבוי אחרון: ${new Date(lastExportAt).toLocaleDateString("he-IL")}` : "עדיין לא נוצר גיבוי"}
+          >
+            {backingUp ? <Loader2 className="thc-spin" size={16} /> : <DatabaseBackup size={16} />}
+            {backingUp ? "מכין גיבוי..." : "גיבוי ודוח לאקסל"}
           </button>
-          <button className={role === "manager" ? "active" : ""} onClick={() => setRole("manager")}>
-            <Eye size={14} /> מנהל/ת (צפייה)
-          </button>
+          <div className="thc-role-switch">
+            <button className={role === "coordinator" ? "active" : ""} onClick={() => setRole("coordinator")}>
+              <Pencil size={14} /> רכז/ת מערכת
+            </button>
+            <button className={role === "manager" ? "active" : ""} onClick={() => setRole("manager")}>
+              <Eye size={14} /> מנהל/ת (צפייה)
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2003,6 +2010,7 @@ export default function App() {
                 archives={archives}
                 onCreate={handleCreateArchive}
                 onDelete={handleDeleteArchive}
+                onExport={handleExportArchive}
               />
             )}
             {activeTab === "settings" && role === "coordinator" && (

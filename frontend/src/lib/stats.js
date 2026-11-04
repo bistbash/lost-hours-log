@@ -3,6 +3,22 @@
 export const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 export const MONTH_NAMES = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 
+export const DAY_COLORS = {
+  "ראשון": { bg: "#FBDADA", fg: "#8A2E2E" },
+  "שני":   { bg: "#D6E8F7", fg: "#1F4E79" },
+  "שלישי": { bg: "#FBE7C6", fg: "#7A5A10" },
+  "רביעי": { bg: "#D9F2D9", fg: "#2C6B2C" },
+  "חמישי": { bg: "#E6D9F2", fg: "#5A2E82" },
+  "שישי":  { bg: "#D6F0F0", fg: "#1F6B6B" },
+  "שבת":   { bg: "#E7E7E7", fg: "#4A4A4A" },
+};
+export const MONTH_COLORS = [
+  { bg: "#FBDADA", fg: "#8A2E2E" }, { bg: "#FBE7C6", fg: "#7A5A10" }, { bg: "#F7F0C6", fg: "#6B5E10" },
+  { bg: "#D9F2D9", fg: "#2C6B2C" }, { bg: "#D6F0F0", fg: "#1F6B6B" }, { bg: "#D6E8F7", fg: "#1F4E79" },
+  { bg: "#DDD9F2", fg: "#3C2E82" }, { bg: "#E6D9F2", fg: "#5A2E82" }, { bg: "#F2D9EC", fg: "#822E6E" },
+  { bg: "#F2D9DD", fg: "#822E44" }, { bg: "#EAD9C6", fg: "#6B4A10" }, { bg: "#D9E0D0", fg: "#3E5A2C" },
+];
+
 export const hoursOf = (e) => Number(e.hours || 0);
 export const sumHours = (list) => list.reduce((s, e) => s + hoursOf(e), 0);
 export const monthKey = (dateStr) => (dateStr ? dateStr.slice(0, 7) : "");
