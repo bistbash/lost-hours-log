@@ -29,6 +29,8 @@ export const fetchVersion = () => request("GET", "/api/version").then((d) => d.v
 
 /** kind: "teachers" | "instructors"; ops: { add?, update?, remove? } */
 export const entryOps = (kind, ops) => request("POST", `/api/entries/${kind}/ops`, ops);
+/** Renames a person in the names list and in all of their entries. */
+export const renamePerson = (kind, from, to) => request("POST", `/api/people/${kind}/rename`, { from, to });
 export const archiveOps = (ops) => request("POST", "/api/archives/ops", ops);
 export const patchSettings = (patch) => request("PATCH", "/api/settings", patch);
 export const saveLastExport = (ts) => request("PUT", "/api/storage/th-last-export", { value: ts, wrapped: true });

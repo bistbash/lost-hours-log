@@ -265,3 +265,18 @@ html, body { margin: 0; background: #EEF2F7; }
 .thc-backup-btn:hover:not(:disabled) { filter: brightness(1.06); }
 .thc-backup-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .thc-backup-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Settings lists: drag to reorder, rename in place */
+.thc-chip[draggable="true"] { cursor: grab; user-select: none; }
+.thc-chip[draggable="true"]:active { cursor: grabbing; }
+.thc-chip.is-dragging { opacity: 0.45; }
+.thc-chip.is-drop-before { box-shadow: 4px 0 0 var(--blue); }
+.thc-chip.is-drop-after { box-shadow: -4px 0 0 var(--blue); }
+.thc-chip-editing { border-color: var(--blue); background: #fff; padding: 3px 6px; }
+.thc-chip-editing input {
+  width: 150px; border: none; outline: none; background: transparent; color: var(--ink);
+  font-family: 'Assistant', sans-serif; font-size: 13px;
+}
+.thc-chip-note { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-soft); }
+.thc-chip-note.is-error { color: #A6432B; font-weight: 600; }
+.thc-chip-note.is-done { color: #2C6B2C; font-weight: 600; }

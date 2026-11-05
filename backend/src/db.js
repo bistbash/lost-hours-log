@@ -183,23 +183,33 @@ export function cleanEntry(raw, { partial = false } = {}) {
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-/** Runs fn(currentValue) -> nextValue on one key inside a transaction, with the row locked. */
-async function withLockedKey(key, empty, fn) {
+/**
+ * Runs fn({ key: currentValue }) -> { next: { key: nextValue }, result } inside one transaction,
+ * with every row locked, so changes across keys land together or not at all.
+ * `defaults` is { key: emptyValue }; keys are locked in sorted order.
+ */
+async function withLockedKeys(defaults, fn) {
+  const keys = Object.keys(defaults).sort();
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
-    await client.query(
-      `INSERT INTO app_storage (key, value) VALUES ($1, $2::jsonb) ON CONFLICT (key) DO NOTHING`,
-      [key, JSON.stringify(empty)]
-    );
-    const { rows } = await client.query(`SELECT value FROM app_storage WHERE key = $1 FOR UPDATE`, [key]);
-    const current = normalizeStored(rows[0]?.value);
+    const current = {};
+    for (const key of keys) {
+      await client.query(
+        `INSERT INTO app_storage (key, value) VALUES ($1, $2::jsonb) ON CONFLICT (key) DO NOTHING`,
+        [key, JSON.stringify(defaults[key])]
+      );
+      const { rows } = await client.query(`SELECT value FROM app_storage WHERE key = $1 FOR UPDATE`, [key]);
+      current[key] = normalizeStored(rows[0]?.value);
+    }
     const { next, result } = fn(current);
-    await client.query(
-      `UPDATE app_storage SET value = $2::jsonb, updated_at = NOW() WHERE key = $1`,
-      [key, JSON.stringify(next)]
-    );
-    const v = await client.query(`SELECT updated_at::text AS v FROM app_storage WHERE key = $1`, [key]);
+    for (const key of keys) {
+      await client.query(
+        `UPDATE app_storage SET value = $2::jsonb, updated_at = NOW() WHERE key = $1`,
+        [key, JSON.stringify(next[key])]
+      );
+    }
+    const v = await client.query(`SELECT updated_at::text AS v FROM app_storage WHERE key = $1`, [keys[0]]);
     await client.query("COMMIT");
     return { ...result, version: v.rows[0].v };
   } catch (err) {
@@ -208,6 +218,14 @@ async function withLockedKey(key, empty, fn) {
   } finally {
     client.release();
   }
+}
+
+/** Runs fn(currentValue) -> { next, result } on one key. */
+function withLockedKey(key, empty, fn) {
+  return withLockedKeys({ [key]: empty }, (current) => {
+    const { next, result } = fn(current[key]);
+    return { next: { [key]: next }, result };
+  });
 }
 
 export async function applyEntryOps(key, ops) {
@@ -273,6 +291,39 @@ export async function applyArchiveOps(ops) {
     const ids = new Set(list.map((a) => String(a.id)));
     list = [...list, ...fresh.filter((a) => !ids.has(a.id))];
     return { next: list, result: { count: list.length } };
+  });
+}
+
+/**
+ * Renames a person in the names list and in all of their entries, as one change.
+ * Refuses a name already in use: that would silently merge two people's records.
+ */
+export async function renamePerson(entriesKey, namesKey, rawFrom, rawTo) {
+  const from = String(rawFrom ?? "");
+  const to = text(rawTo);
+  if (!from || !to) throw badRequest("חסר שם");
+  if (from === to) throw badRequest("השם לא השתנה");
+  return withLockedKeys({ [entriesKey]: [], "th-settings": {} }, (current) => {
+    const settings = current["th-settings"] && typeof current["th-settings"] === "object" && !Array.isArray(current["th-settings"]) ? current["th-settings"] : {};
+    const names = Array.isArray(settings[namesKey]) ? settings[namesKey] : [];
+    const entries = Array.isArray(current[entriesKey]) ? current[entriesKey] : [];
+    const inEntries = (name) => entries.some((e) => e.name === name);
+    if (!names.includes(from) && !inEntries(from)) throw badRequest(`השם "${from}" לא נמצא. רעננו את הדף ונסו שוב.`);
+    if (names.includes(to) || inEntries(to)) throw badRequest(`השם "${to}" כבר קיים`);
+    let updated = 0;
+    const now = Date.now();
+    const nextEntries = entries.map((e) => {
+      if (e.name !== from) return e;
+      updated += 1;
+      return { ...e, name: to, updatedAt: now };
+    });
+    return {
+      next: {
+        [entriesKey]: nextEntries,
+        "th-settings": { ...settings, [namesKey]: names.map((n) => (n === from ? to : n)) },
+      },
+      result: { updated, name: to },
+    };
   });
 }
 

@@ -5,7 +5,7 @@ import {
   LayoutDashboard, AlertTriangle, CloudDownload, Clock, TrendingUp, Flag, CalendarDays, Archive as ArchiveIcon, UserSearch
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { archiveOps, entryOps, fetchState, fetchVersion, patchSettings, saveLastExport } from "./lib/api.js";
+import { archiveOps, entryOps, fetchState, fetchVersion, patchSettings, renamePerson, saveLastExport } from "./lib/api.js";
 import { DAY_COLORS, MONTH_COLORS, fmt, inRange, people as peopleOf, searchKey } from "./lib/stats.js";
 import { downloadBackup } from "./lib/backupReport.js";
 import { NamePicker, RangeBar } from "./components/ui.jsx";
@@ -144,10 +144,15 @@ function normalizeDate(val) {
 /*  Small building blocks                                              */
 /* ------------------------------------------------------------------ */
 
-function Chip({ children, onRemove }) {
+function Chip({ children, onRemove, onEdit, className = "", ...rest }) {
   return (
-    <span className="thc-chip">
+    <span className={`thc-chip ${className}`.trim()} {...rest}>
       {children}
+      {onEdit && (
+        <button type="button" className="thc-chip-x" onClick={onEdit} aria-label="ערוך שם" title="עריכת שם">
+          <Pencil size={11} />
+        </button>
+      )}
       {onRemove && (
         <button className="thc-chip-x" onClick={onRemove} aria-label="הסר">
           <X size={12} />
@@ -157,8 +162,29 @@ function Chip({ children, onRemove }) {
   );
 }
 
-function ListEditor({ title, items, onChange }) {
+/** `items` with `item` moved next to `target`: right after it when `after` is true, otherwise right before it. */
+function moveItem(items, item, target, after) {
+  if (item === target) return items;
+  const rest = items.filter((x) => x !== item);
+  const i = rest.indexOf(target);
+  if (i < 0) return items;
+  rest.splice(after ? i + 1 : i, 0, item);
+  return rest;
+}
+
+const CHIP_DRAG_TYPE = "application/x-thc-chip"; // Not plain text, so a dropped chip never lands inside a text field.
+
+/** A list of chips, reordered by dragging within the list. With `onRename`, each chip can also be renamed. */
+function ListEditor({ title, items, onChange, onRename, countRecords }) {
   const [draft, setDraft] = useState("");
+  const [dragged, setDragged] = useState(null);
+  const [dropAt, setDropAt] = useState(null); // { item, after }
+  const [editing, setEditing] = useState(null);
+  const [editValue, setEditValue] = useState("");
+  const [editError, setEditError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+
   const add = () => {
     const v = draft.trim();
     if (!v || items.includes(v)) return;
@@ -177,17 +203,97 @@ function ListEditor({ title, items, onChange }) {
     if (deduped.length) onChange([...items, ...deduped]);
     setDraft("");
   };
+
+  const allowDrop = (e) => { if (dragged !== null) e.preventDefault(); }; // Only this list's own chips can land here.
+  const endDrag = () => { setDragged(null); setDropAt(null); };
+  const dropSpot = (e, it) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return { item: it, after: e.clientX < rect.left + rect.width / 2 }; // The page is right-to-left.
+  };
+  const finishDrop = (e, spot) => {
+    e.preventDefault();
+    if (dragged !== null && spot) onChange(moveItem(items, dragged, spot.item, spot.after));
+    endDrag();
+  };
+  const dragProps = (it) => ({
+    draggable: true,
+    title: "גררו כדי לשנות את הסדר",
+    onDragStart: (e) => {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData(CHIP_DRAG_TYPE, it);
+      setDragged(it);
+      setNotice("");
+    },
+    onDragEnd: endDrag,
+    onDragOver: (e) => {
+      if (dragged === null) return;
+      const spot = dropSpot(e, it);
+      setDropAt((prev) => (prev && prev.item === spot.item && prev.after === spot.after ? prev : spot));
+    },
+    onDrop: (e) => {
+      e.stopPropagation(); // A quick release can arrive before the last dragover has rendered.
+      finishDrop(e, dropSpot(e, it));
+    },
+  });
+  const chipClass = (it) => [
+    it === dragged ? "is-dragging" : "",
+    dropAt && dropAt.item === it && it !== dragged ? (dropAt.after ? "is-drop-after" : "is-drop-before") : "",
+  ].filter(Boolean).join(" ");
+
+  const startEdit = (it) => { setEditing(it); setEditValue(it); setEditError(""); setNotice(""); };
+  const cancelEdit = () => { setEditing(null); setEditError(""); };
+  const saveEdit = async () => {
+    const next = editValue.trim();
+    if (!next || next === editing) { cancelEdit(); return; }
+    if (items.includes(next)) { setEditError(`השם "${next}" כבר קיים ברשימה`); return; }
+    setSaving(true);
+    const res = await onRename(editing, next);
+    setSaving(false);
+    if (!res) return; // The app's error banner explains what happened.
+    setEditing(null);
+    setEditError("");
+    setNotice(res.updated ? `השם עודכן, כולל ${res.updated} רשומות קיימות` : "השם עודכן");
+  };
+
   return (
     <div className="thc-list-editor">
       <h4>{title}</h4>
-      <div className="thc-chip-row">
+      <div className="thc-chip-row" onDragEnter={allowDrop} onDragOver={allowDrop} onDrop={(e) => finishDrop(e, dropAt)}>
         {items.length === 0 && <span className="thc-muted">אין פריטים עדיין</span>}
-        {items.map((it) => (
-          <Chip key={it} onRemove={() => onChange(items.filter((x) => x !== it))}>
+        {items.map((it) => (editing === it ? (
+          <span key={it} className="thc-chip thc-chip-editing">
+            <input
+              autoFocus
+              value={editValue}
+              disabled={saving}
+              aria-label="שם חדש"
+              onChange={(e) => { setEditValue(e.target.value); setEditError(""); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveEdit();
+                if (e.key === "Escape") cancelEdit();
+              }}
+            />
+            <button type="button" className="thc-chip-x" onClick={saveEdit} disabled={saving} aria-label="שמור שם"><Check size={12} /></button>
+            <button type="button" className="thc-chip-x" onClick={cancelEdit} disabled={saving} aria-label="בטל עריכה"><X size={12} /></button>
+          </span>
+        ) : (
+          <Chip
+            key={it}
+            className={chipClass(it)}
+            onEdit={onRename ? () => startEdit(it) : undefined}
+            onRemove={() => onChange(items.filter((x) => x !== it))}
+            {...dragProps(it)}
+          >
             {it}
           </Chip>
-        ))}
+        )))}
       </div>
+      {editing !== null && (
+        <p className={`thc-chip-note ${editError ? "is-error" : ""}`} role={editError ? "alert" : undefined}>
+          {editError || `שינוי השם יעדכן גם ${countRecords(editing)} רשומות קיימות`}
+        </p>
+      )}
+      {editing === null && notice && <p className="thc-chip-note is-done" role="status">{notice}</p>}
       <div className="thc-add-row">
         <input
           value={draft}
@@ -1064,12 +1170,29 @@ function ArchiveTab({ teacherEntries, instructorEntries, archives, onCreate, onD
   );
 }
 
-function SettingsTab({ settings, onChange }) {
+function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instructorEntries }) {
   const upd = (key) => (val) => onChange({ ...settings, [key]: val });
+  const countOf = (entries) => (name) => entries.filter((e) => e.name === name).length;
   return (
+    <>
+    <p className="thc-import-hint">
+      גררו פריט כדי לשנות את הסדר שלו בתוך הרשימה. בשמות מורים ומדריכים, העיפרון מאפשר לשנות שם, והשינוי יחול גם על כל הרשומות הקיימות.
+    </p>
     <div className="thc-settings-grid">
-      <ListEditor title="שמות מורים" items={settings.teacherNames} onChange={upd("teacherNames")} />
-      <ListEditor title="שמות מדריכים" items={settings.instructorNames} onChange={upd("instructorNames")} />
+      <ListEditor
+        title="שמות מורים"
+        items={settings.teacherNames}
+        onChange={upd("teacherNames")}
+        onRename={(from, to) => onRenamePerson("teachers", from, to)}
+        countRecords={countOf(teacherEntries)}
+      />
+      <ListEditor
+        title="שמות מדריכים"
+        items={settings.instructorNames}
+        onChange={upd("instructorNames")}
+        onRename={(from, to) => onRenamePerson("instructors", from, to)}
+        countRecords={countOf(instructorEntries)}
+      />
       <ListEditor title="מקצועות" items={settings.subjects} onChange={upd("subjects")} />
       <ListEditor title="שכבות" items={settings.grades} onChange={upd("grades")} />
       <ListEditor title="סיבות ביטול — מורים" items={settings.teacherReasons} onChange={upd("teacherReasons")} />
@@ -1090,6 +1213,7 @@ function SettingsTab({ settings, onChange }) {
         />
       </div>
     </div>
+    </>
   );
 }
 
@@ -1262,6 +1386,13 @@ export default function App() {
     setSettings(next);
     if (Object.keys(patch).length) write(() => patchSettings(patch));
   }, [write]);
+
+  /** Renames on the server, then reloads, because the name changes in both the list and the records. */
+  const handleRenamePerson = useCallback(async (kind, from, to) => {
+    const res = await write(() => renamePerson(kind, from, to));
+    if (res) await reload();
+    return res;
+  }, [write, reload]);
 
   const handleCreateArchive = useCallback((label) => {
     const snapshot = {
@@ -2014,7 +2145,13 @@ export default function App() {
               />
             )}
             {activeTab === "settings" && role === "coordinator" && (
-              <SettingsTab settings={settings} onChange={updateSettings} />
+              <SettingsTab
+                settings={settings}
+                onChange={updateSettings}
+                onRenamePerson={handleRenamePerson}
+                teacherEntries={teacherEntries}
+                instructorEntries={instructorEntries}
+              />
             )}
           </>
         )}

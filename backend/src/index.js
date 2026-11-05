@@ -9,6 +9,7 @@ import {
   getVersion,
   mergeSettings,
   pingDb,
+  renamePerson,
   setStorageValue,
   snapshotIfDue,
   waitForDb,
@@ -108,12 +109,21 @@ app.get("/api/version", requireDb, route(async (_req, res) => {
 }));
 
 const ENTRY_KIND = { teachers: "th-entries-teachers", instructors: "th-entries-instructors" };
+const NAMES_KIND = { teachers: "teacherNames", instructors: "instructorNames" };
 
 /** Body: { add?: Entry[], update?: Entry[] (by id), remove?: id[] }. Applied atomically on the server. */
 app.post("/api/entries/:kind/ops", requireDb, route(async (req, res) => {
   const key = ENTRY_KIND[req.params.kind];
   if (!key) throw new HttpError(404, "unknown list");
   res.json(await applyEntryOps(key, req.body || {}));
+}));
+
+/** Body: { from, to }. Changes the name in the settings list and in that person's entries together. */
+app.post("/api/people/:kind/rename", requireDb, route(async (req, res) => {
+  const key = ENTRY_KIND[req.params.kind];
+  if (!key) throw new HttpError(404, "unknown list");
+  const { from, to } = req.body || {};
+  res.json(await renamePerson(key, NAMES_KIND[req.params.kind], from, to));
 }));
 
 /** Body: { add?: Archive[], remove?: id[] }. */
