@@ -393,16 +393,23 @@ html, body { margin: 0; background: #EEF2F7; }
 }
 .thc-team-delete:hover { background: #F6E1DC; color: #A6432B; }
 .thc-team-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; background: #FDEDEB; font-size: 14px; color: #7A2E22; }
-.thc-team-summary { margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: var(--ink-soft); }
-.thc-team-summary b { color: var(--ink); }
+.thc-team-body .thc-setlist { flex: none; }
+.thc-team-section { display: flex; align-items: baseline; gap: 7px; margin: 14px 0 8px; font-size: 14.5px; font-weight: 700; color: var(--ink); }
+.thc-team-section span { font-size: 13px; font-weight: 400; color: var(--ink-soft); }
+.thc-setlist-text small { font-size: 12.5px; color: var(--ink-soft); }
+.thc-team-addto { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #E6F0F8; font-size: 14px; color: #1F5A8C; }
+.thc-team-addto-close { display: grid; place-items: center; margin-inline-start: auto; padding: 4px; border: none; border-radius: 7px; background: none; color: #1F5A8C; cursor: pointer; }
+.thc-team-addto-close:hover { background: #D5E5F2; }
 .thc-team-member {
   display: flex; justify-content: space-between; align-items: center; gap: 6px; min-width: 0; min-height: 42px; padding: 4px 12px;
   border: 1px solid transparent; border-radius: 9px; background: #F5F7FA; color: var(--ink); cursor: pointer; text-align: right;
   font-family: 'Assistant', sans-serif; font-size: 15px;
 }
 .thc-team-member:hover { background: #EDF1F6; }
+.thc-team-member svg { flex-shrink: 0; color: var(--ink-soft); opacity: 0; }
+.thc-team-member:hover svg, .thc-team-member:focus-visible svg { opacity: 1; }
+@media (hover: none) { .thc-team-member svg { opacity: 1; } }
 .thc-team-member:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
-.thc-team-member.is-on { background: #E6F0F8; border-color: var(--blue); color: #1F5A8C; font-weight: 600; }
 
 /* Teams tab */
 .thc-team-title { margin: 8px 2px 14px; font-family: 'Frank Ruhl Libre', serif; font-size: 24px; color: var(--ink); }

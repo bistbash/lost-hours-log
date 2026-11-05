@@ -1266,7 +1266,7 @@ function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instr
               <h3>צוותים ומגמות</h3>
               <span>{settings.teams.length} צוותים</span>
             </header>
-            <p className="thc-settings-hint">בוחרים צוות, ולוחצים על שמות כדי לצרף או להסיר. אפשר לשייך אדם ליותר מצוות אחד.</p>
+            <p className="thc-settings-hint">בוחרים צוות ולוחצים על שם מהרשימה כדי לצרף. מי ששייך גם לצוות נוסף מתווסף אליו בסימן + שליד שמו.</p>
             <TeamsEditor settings={settings} query={query} onChange={upd("teams")} makeId={uid} />
           </>
         ) : (
