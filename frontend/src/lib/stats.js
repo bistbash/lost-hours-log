@@ -137,6 +137,25 @@ export function people(list) {
     .sort((a, b) => b.hours - a.hours || a.name.localeCompare(b.name, "he"));
 }
 
+/** A team's entries, each tagged with its kind. Teams hold { teachers: names[], instructors: names[] }. */
+export function teamEntries(team, teachers, instructors) {
+  const pick = (list, names, kind) => {
+    const set = new Set(names);
+    return list.filter((e) => set.has(e.name)).map((e) => ({ ...e, kind }));
+  };
+  return [...pick(teachers, team.teachers, "teachers"), ...pick(instructors, team.instructors, "instructors")];
+}
+
+/** Every member of a team with their totals, including people with no lost hours; most hours first. */
+export function teamMembers(team, teachers, instructors) {
+  const rows = (names, list, kind) => {
+    const totals = new Map(people(list).map((p) => [p.name, p]));
+    return names.map((name) => ({ name, hours: 0, count: 0, last: "", topReason: "—", ...totals.get(name), kind }));
+  };
+  return [...rows(team.teachers, teachers, "teachers"), ...rows(team.instructors, instructors, "instructors")]
+    .sort((a, b) => b.hours - a.hours || a.name.localeCompare(b.name, "he"));
+}
+
 /** Hebrew-friendly search key: no quotes/geresh, final letters folded, lower-case. */
 export function searchKey(s) {
   return String(s || "")

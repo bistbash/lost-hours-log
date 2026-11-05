@@ -1,9 +1,9 @@
-import React, { useMemo } from "react";
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import React, { useMemo, useState } from "react";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AlertTriangle, CloudDownload, Download } from "lucide-react";
 import { BarList, Kpi, axisTick, numTick, tooltipStyle } from "./ui.jsx";
 import { SERIES } from "./ReportsTab.jsx";
-import { fmt, groupHours, monthKey, monthKeyLabel, monthsSpan, people, pct, sumHours } from "../lib/stats.js";
+import { byWeekday, fmt, groupHours, monthKey, monthKeyLabel, monthsSpan, people, pct, sumHours } from "../lib/stats.js";
 
 const ym = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
@@ -99,6 +99,8 @@ export default function OverviewTab({ teacherEntries, instructorEntries, lastExp
         </div>
       </div>
 
+      <BusiestDay entries={tagged} />
+
       <div className="thc-reports-row">
         <TopPeople title="מורים עם הכי הרבה שעות" rows={teachers} kind="teachers" alertThreshold={alertThreshold} onPickPerson={onPickPerson} />
         <TopPeople title="מדריכים עם הכי הרבה שעות" rows={instructors} kind="instructors" alertThreshold={alertThreshold} onPickPerson={onPickPerson} />
@@ -110,6 +112,63 @@ export default function OverviewTab({ teacherEntries, instructorEntries, lastExp
           <button type="button" className="thc-link" onClick={onExportBackup}>ייצוא גיבוי חדש</button>
         </p>
       )}
+    </div>
+  );
+}
+
+/** Which weekday loses the most hours, for all reasons or for one. */
+function BusiestDay({ entries }) {
+  const [reason, setReason] = useState("");
+  const reasons = useMemo(() => groupHours(entries, (e) => e.reason), [entries]);
+  const current = reasons.some((r) => r.name === reason) ? reason : ""; // The chosen reason may have been removed.
+  const filtered = useMemo(
+    () => (current ? entries.filter((e) => (e.reason || "לא צוין") === current) : entries),
+    [entries, current],
+  );
+  const days = useMemo(() => byWeekday(filtered), [filtered]);
+  const total = sumHours(filtered);
+  const peak = Math.max(0, ...days.map((d) => d.value));
+  const busiest = days.filter((d) => peak > 0 && d.value === peak);
+
+  return (
+    <div className="thc-card">
+      <div className="thc-subject-header">
+        <h3>היום עם הכי הרבה ביטולים</h3>
+        <label className="thc-day-filter">
+          סיבה
+          <select value={current} onChange={(e) => setReason(e.target.value)}>
+            <option value="">כל הסיבות</option>
+            {reasons.map((r) => <option key={r.name} value={r.name}>{r.name}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="thc-day-layout">
+        <div className="thc-day-headline">
+          <strong>{busiest.length ? `${busiest.length > 1 ? "ימים" : "יום"} ${busiest.map((d) => d.name).join(", ")}` : "—"}</strong>
+          {busiest.length > 0 && <span>{peak === 1 ? "שעה אחת" : `${fmt(peak)} שעות`}{busiest.length > 1 ? " בכל יום" : ""}, {pct(peak, total)} מהשעות{current ? ` בסיבה "${current}"` : ""}</span>}
+        </div>
+        <ResponsiveContainer width="100%" height={210}>
+          <BarChart data={days} margin={{ top: 20, right: 8, left: 8, bottom: 0 }} barCategoryGap="30%">
+            <XAxis dataKey="name" reversed tick={axisTick} tickLine={false} axisLine={{ stroke: "#D8DDD6" }} />
+            <YAxis hide domain={[0, "dataMax"]} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              cursor={{ fill: "rgba(27,42,74,0.06)" }}
+              formatter={(v, _n, item) => [`${fmt(v)} שעות · ${item.payload.count} רשומות (${pct(v, total)})`, "שעות"]}
+            />
+            <Bar
+              isAnimationActive={false}
+              dataKey="value"
+              name="שעות"
+              maxBarSize={64}
+              radius={[4, 4, 0, 0]}
+              label={{ position: "top", formatter: (v) => (v ? fmt(v) : ""), fontFamily: "Roboto Mono", fontSize: 12, fill: "#3A4750" }}
+            >
+              {days.map((d) => <Cell key={d.name} fill={peak > 0 && d.value === peak ? "#E8821E" : "#B4C7DA"} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import {
   Users, GraduationCap, BarChart3, Settings as SettingsIcon, Trophy,
   Plus, Trash2, Download, X, Eye, Pencil, Loader2, ChevronDown, Upload, Check, DatabaseBackup, Search,
-  LayoutDashboard, AlertTriangle, CloudDownload, Clock, TrendingUp, Flag, CalendarDays, Archive as ArchiveIcon, UserSearch
+  LayoutDashboard, AlertTriangle, CloudDownload, Clock, TrendingUp, Flag, CalendarDays, Archive as ArchiveIcon, UserSearch, UsersRound
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { archiveOps, entryOps, fetchState, fetchVersion, patchSettings, renamePerson, saveLastExport } from "./lib/api.js";
@@ -12,6 +12,8 @@ import { NamePicker, RangeBar } from "./components/ui.jsx";
 import ReportsTab from "./components/ReportsTab.jsx";
 import PeopleTab from "./components/PeopleTab.jsx";
 import OverviewTab from "./components/OverviewTab.jsx";
+import TeamsEditor from "./components/TeamsEditor.jsx";
+import TeamsTab from "./components/TeamsTab.jsx";
 
 /* ------------------------------------------------------------------ */
 /*  Constants & helpers                                                */
@@ -54,6 +56,11 @@ const DEFAULT_SETTINGS = {
   // Staff names are entered in "הגדרות" (kept in the database, not in the source code).
   teacherNames: [],
   instructorNames: [],
+  teams: [
+    { id: "major-mechanics", name: "מכונות", teachers: [], instructors: [] },
+    { id: "major-software", name: "תוכנה", teachers: [], instructors: [] },
+    { id: "major-electronics", name: "אלקטרוניקה וחשמל", teachers: [], instructors: [] },
+  ],
   subjects: ["עברית", "אנגלית", "תנ\"ך", "נטרול מערכתי", "מחלה", "תרמודינמיקה", "חומרים מעובדים", "חוגש", "אזרחות", "מבחן/בוחן", "היסטוריה"],
   grades: ["י", "יא", "יב"],
   teacherReasons: [],
@@ -1177,6 +1184,7 @@ const SETTINGS_LISTS = [
 ];
 const SETTINGS_GROUPS = [...new Set(SETTINGS_LISTS.map((l) => l.group))];
 const THRESHOLD_ID = "alertThreshold";
+const TEAMS_ID = "teams";
 
 /** One list at a time, chosen from a side menu; the search covers every list. */
 function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instructorEntries }) {
@@ -1186,6 +1194,9 @@ function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instr
 
   const key = searchKey(query);
   const hits = (list, k = key) => settings[list.id].filter((it) => searchKey(it).includes(k)).length;
+  const teamHits = (k = key) => settings.teams.filter((t) => (
+    [t.name, ...t.teachers, ...t.instructors].some((n) => searchKey(n).includes(k))
+  )).length;
   const active = SETTINGS_LISTS.find((l) => l.id === activeId);
   const entriesOf = (kind) => (kind === "teachers" ? teacherEntries : instructorEntries);
 
@@ -1195,6 +1206,7 @@ function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instr
     if (!k || (active && hits(active, k) > 0)) return;
     const first = SETTINGS_LISTS.find((l) => hits(l, k) > 0); // Open the first list that has a match.
     if (first) setActiveId(first.id);
+    else if (teamHits(k) > 0) setActiveId(TEAMS_ID);
   };
 
   const menuItem = (id, label, count, dim) => (
@@ -1222,6 +1234,7 @@ function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instr
           <div key={group}>
             <p className="thc-settings-group">{group}</p>
             {SETTINGS_LISTS.filter((l) => l.group === group).map((l) => menuItem(l.id, l.label, hits(l), key !== "" && hits(l) === 0))}
+            {group === "אנשים" && menuItem(TEAMS_ID, "צוותים ומגמות", teamHits(), key !== "" && teamHits() === 0)}
           </div>
         ))}
         <p className="thc-settings-group">כללי</p>
@@ -1246,6 +1259,15 @@ function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instr
               onRename={active.kind ? (from, to) => onRenamePerson(active.kind, from, to) : undefined}
               countRecords={active.kind ? (name) => entriesOf(active.kind).filter((e) => e.name === name).length : undefined}
             />
+          </>
+        ) : activeId === TEAMS_ID ? (
+          <>
+            <header className="thc-settings-head">
+              <h3>צוותים ומגמות</h3>
+              <span>{settings.teams.length} צוותים</span>
+            </header>
+            <p className="thc-settings-hint">בוחרים צוות, ולוחצים על שמות כדי לצרף או להסיר. אפשר לשייך אדם ליותר מצוות אחד.</p>
+            <TeamsEditor settings={settings} query={query} onChange={upd("teams")} makeId={uid} />
           </>
         ) : (
           <>
@@ -1278,13 +1300,14 @@ const ALL_TABS = [
   { id: "instructors", label: "הזנת מדריכים", icon: GraduationCap, color: "#2E6DA4" },
   { id: "reports", label: "דוחות וגרפים", icon: BarChart3, color: "#E8821E" },
   { id: "people", label: "לפי איש צוות", icon: UserSearch, color: "#2E6DA4" },
+  { id: "teams", label: "צוותים", icon: UsersRound, color: "#2E6DA4" },
   { id: "summary", label: "סיכום שנתי", icon: Trophy, color: "#C96A1E" },
   { id: "holidays", label: "חגים ומועדים", icon: CalendarDays, color: "#6B4A9E" },
   { id: "archive", label: "ארכיון", icon: ArchiveIcon, color: "#6E5A3E" },
   { id: "settings", label: "הגדרות", icon: SettingsIcon, color: "#3A4750" },
 ];
 
-const MANAGER_TABS = ["overview", "reports", "people", "summary"];
+const MANAGER_TABS = ["overview", "reports", "people", "teams", "summary"];
 const POLL_MS = 20000;
 
 export default function App() {
@@ -2156,6 +2179,14 @@ export default function App() {
             )}
             {activeTab === "people" && (
               <PeopleTab teacherEntries={teacherEntries} instructorEntries={instructorEntries} settings={settings} focus={personFocus} alertThreshold={settings.alertThreshold} />
+            )}
+            {activeTab === "teams" && (
+              <TeamsTab
+                teacherEntries={teacherEntries}
+                instructorEntries={instructorEntries}
+                settings={settings}
+                onPickPerson={pickPerson}
+              />
             )}
             {activeTab === "summary" && (
               <SummaryTab teacherEntries={teacherEntries} instructorEntries={instructorEntries} alertThreshold={settings.alertThreshold} onPickPerson={pickPerson} />

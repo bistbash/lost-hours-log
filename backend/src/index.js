@@ -118,12 +118,12 @@ app.post("/api/entries/:kind/ops", requireDb, route(async (req, res) => {
   res.json(await applyEntryOps(key, req.body || {}));
 }));
 
-/** Body: { from, to }. Changes the name in the settings list and in that person's entries together. */
+/** Body: { from, to }. Changes the name in the settings list, the teams and that person's entries together. */
 app.post("/api/people/:kind/rename", requireDb, route(async (req, res) => {
   const key = ENTRY_KIND[req.params.kind];
   if (!key) throw new HttpError(404, "unknown list");
   const { from, to } = req.body || {};
-  res.json(await renamePerson(key, NAMES_KIND[req.params.kind], from, to));
+  res.json(await renamePerson(key, NAMES_KIND[req.params.kind], req.params.kind, from, to));
 }));
 
 /** Body: { add?: Archive[], remove?: id[] }. */

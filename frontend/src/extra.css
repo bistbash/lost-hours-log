@@ -356,3 +356,59 @@ html, body { margin: 0; background: #EEF2F7; }
   .thc-settings-nav { border-inline-end: none; border-bottom: 1px solid var(--line); }
   .thc-settings-panel { padding: 20px 16px; }
 }
+
+/* Overview: the busiest weekday */
+.thc-day-filter { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--ink-soft); }
+.thc-day-filter select {
+  height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+  font-family: 'Assistant', sans-serif; font-size: 14px;
+}
+.thc-day-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: center; }
+.thc-day-headline { display: flex; flex-direction: column; gap: 6px; }
+.thc-day-headline strong { font-family: 'Frank Ruhl Libre', serif; font-size: 28px; font-weight: 700; line-height: 1.2; color: var(--ink); }
+.thc-day-headline span { font-size: 14px; line-height: 1.45; color: var(--ink-soft); }
+@media (max-width: 760px) { .thc-day-layout { grid-template-columns: 1fr; } }
+
+/* Settings: teams */
+.thc-team-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.thc-team-pill {
+  display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px;
+  background: #fff; color: var(--ink); cursor: pointer; font-family: 'Assistant', sans-serif; font-size: 14.5px;
+}
+.thc-team-pill span { font-size: 13px; color: var(--ink-soft); }
+.thc-team-pill:hover { background: #EEF2F7; }
+.thc-team-pill.is-active { background: #E6F0F8; border-color: var(--blue); color: #1F5A8C; font-weight: 600; }
+.thc-team-pill.is-active span { color: #1F5A8C; }
+.thc-team-body { flex: 1; display: flex; flex-direction: column; }
+.thc-team-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin-bottom: 12px; }
+.thc-team-head label { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.thc-root .thc-team-head input {
+  height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink);
+  font-family: 'Assistant', sans-serif; font-size: 15px;
+}
+.thc-root .thc-team-head input:focus { outline: none; border-color: var(--blue); }
+.thc-team-delete {
+  display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px; border: none; border-radius: 10px;
+  background: none; color: var(--ink-soft); cursor: pointer; font-family: 'Assistant', sans-serif; font-size: 14px;
+}
+.thc-team-delete:hover { background: #F6E1DC; color: #A6432B; }
+.thc-team-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; background: #FDEDEB; font-size: 14px; color: #7A2E22; }
+.thc-team-summary { margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: var(--ink-soft); }
+.thc-team-summary b { color: var(--ink); }
+.thc-team-member {
+  display: flex; justify-content: space-between; align-items: center; gap: 6px; min-width: 0; min-height: 42px; padding: 4px 12px;
+  border: 1px solid transparent; border-radius: 9px; background: #F5F7FA; color: var(--ink); cursor: pointer; text-align: right;
+  font-family: 'Assistant', sans-serif; font-size: 15px;
+}
+.thc-team-member:hover { background: #EDF1F6; }
+.thc-team-member:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.thc-team-member.is-on { background: #E6F0F8; border-color: var(--blue); color: #1F5A8C; font-weight: 600; }
+
+/* Teams tab */
+.thc-team-title { margin: 8px 2px 14px; font-family: 'Frank Ruhl Libre', serif; font-size: 24px; color: var(--ink); }
+.thc-team-table tr.is-selected td { background: #E6F0F8; }
+.thc-team-link { font-weight: 700; }
+.thc-team-hours { min-width: 220px; }
+.thc-team-hours > span:last-child { margin-inline-start: 10px; font-family: 'Roboto Mono', monospace; font-size: 13px; }
+.thc-team-hours .thc-barlist-track { display: inline-block; width: 160px; vertical-align: middle; }
+.thc-team-hours .thc-barlist-fill { display: block; }

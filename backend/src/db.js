@@ -295,10 +295,10 @@ export async function applyArchiveOps(ops) {
 }
 
 /**
- * Renames a person in the names list and in all of their entries, as one change.
+ * Renames a person in the names list, their teams and all of their entries, as one change.
  * Refuses a name already in use: that would silently merge two people's records.
  */
-export async function renamePerson(entriesKey, namesKey, rawFrom, rawTo) {
+export async function renamePerson(entriesKey, namesKey, teamKey, rawFrom, rawTo) {
   const from = String(rawFrom ?? "");
   const to = text(rawTo);
   if (!from || !to) throw badRequest("חסר שם");
@@ -317,11 +317,14 @@ export async function renamePerson(entriesKey, namesKey, rawFrom, rawTo) {
       updated += 1;
       return { ...e, name: to, updatedAt: now };
     });
+    const nextSettings = { ...settings, [namesKey]: names.map((n) => (n === from ? to : n)) };
+    if (Array.isArray(settings.teams)) {
+      nextSettings.teams = settings.teams.map((team) => (
+        Array.isArray(team[teamKey]) ? { ...team, [teamKey]: team[teamKey].map((n) => (n === from ? to : n)) } : team
+      ));
+    }
     return {
-      next: {
-        [entriesKey]: nextEntries,
-        "th-settings": { ...settings, [namesKey]: names.map((n) => (n === from ? to : n)) },
-      },
+      next: { [entriesKey]: nextEntries, "th-settings": nextSettings },
       result: { updated, name: to },
     };
   });
