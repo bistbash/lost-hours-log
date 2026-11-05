@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Users, GraduationCap, BarChart3, Settings as SettingsIcon, Trophy,
-  Plus, Trash2, Download, X, Eye, Pencil, Loader2, ChevronDown, Upload, Check, DatabaseBackup,
+  Plus, Trash2, Download, X, Eye, Pencil, Loader2, ChevronDown, Upload, Check, DatabaseBackup, Search,
   LayoutDashboard, AlertTriangle, CloudDownload, Clock, TrendingUp, Flag, CalendarDays, Archive as ArchiveIcon, UserSearch
 } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -144,24 +144,6 @@ function normalizeDate(val) {
 /*  Small building blocks                                              */
 /* ------------------------------------------------------------------ */
 
-function Chip({ children, onRemove, onEdit, className = "", ...rest }) {
-  return (
-    <span className={`thc-chip ${className}`.trim()} {...rest}>
-      {children}
-      {onEdit && (
-        <button type="button" className="thc-chip-x" onClick={onEdit} aria-label="ערוך שם" title="עריכת שם">
-          <Pencil size={11} />
-        </button>
-      )}
-      {onRemove && (
-        <button className="thc-chip-x" onClick={onRemove} aria-label="הסר">
-          <X size={12} />
-        </button>
-      )}
-    </span>
-  );
-}
-
 /** `items` with `item` moved next to `target`: right after it when `after` is true, otherwise right before it. */
 function moveItem(items, item, target, after) {
   if (item === target) return items;
@@ -172,10 +154,11 @@ function moveItem(items, item, target, after) {
   return rest;
 }
 
-const CHIP_DRAG_TYPE = "application/x-thc-chip"; // Not plain text, so a dropped chip never lands inside a text field.
+const recordsText = (n) => (n === 1 ? "רשומה קיימת אחת" : `${n} רשומות קיימות`);
+const ITEM_DRAG_TYPE = "application/x-thc-item"; // Not plain text, so a dropped item never lands inside a text field.
 
-/** A list of chips, reordered by dragging within the list. With `onRename`, each chip can also be renamed. */
-function ListEditor({ title, items, onChange, onRename, countRecords }) {
+/** One settings list: reordered by dragging, filtered by `query`. With `onRename`, items can also be renamed. */
+function ListEditor({ items, query, onChange, onRename, countRecords }) {
   const [draft, setDraft] = useState("");
   const [dragged, setDragged] = useState(null);
   const [dropAt, setDropAt] = useState(null); // { item, after }
@@ -184,6 +167,9 @@ function ListEditor({ title, items, onChange, onRename, countRecords }) {
   const [editError, setEditError] = useState("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
+
+  const searching = searchKey(query) !== "";
+  const visible = searching ? items.filter((it) => searchKey(it).includes(searchKey(query))) : items;
 
   const add = () => {
     const v = draft.trim();
@@ -204,7 +190,7 @@ function ListEditor({ title, items, onChange, onRename, countRecords }) {
     setDraft("");
   };
 
-  const allowDrop = (e) => { if (dragged !== null) e.preventDefault(); }; // Only this list's own chips can land here.
+  const allowDrop = (e) => { if (dragged !== null) e.preventDefault(); }; // Only this list's own items can land here.
   const endDrag = () => { setDragged(null); setDropAt(null); };
   const dropSpot = (e, it) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -216,11 +202,10 @@ function ListEditor({ title, items, onChange, onRename, countRecords }) {
     endDrag();
   };
   const dragProps = (it) => ({
-    draggable: true,
-    title: "גררו כדי לשנות את הסדר",
+    draggable: !searching,
     onDragStart: (e) => {
       e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData(CHIP_DRAG_TYPE, it);
+      e.dataTransfer.setData(ITEM_DRAG_TYPE, it);
       setDragged(it);
       setNotice("");
     },
@@ -235,7 +220,8 @@ function ListEditor({ title, items, onChange, onRename, countRecords }) {
       finishDrop(e, dropSpot(e, it));
     },
   });
-  const chipClass = (it) => [
+  const itemClass = (it) => [
+    "thc-setlist-item",
     it === dragged ? "is-dragging" : "",
     dropAt && dropAt.item === it && it !== dragged ? (dropAt.after ? "is-drop-after" : "is-drop-before") : "",
   ].filter(Boolean).join(" ");
@@ -252,16 +238,23 @@ function ListEditor({ title, items, onChange, onRename, countRecords }) {
     if (!res) return; // The app's error banner explains what happened.
     setEditing(null);
     setEditError("");
-    setNotice(res.updated ? `השם עודכן, כולל ${res.updated} רשומות קיימות` : "השם עודכן");
+    setNotice(res.updated ? `השם עודכן, כולל ${recordsText(res.updated)}` : "השם עודכן");
   };
 
+  const compact = items.every((it) => it.length <= 4); // Grades and class numbers don't need wide cells.
+
   return (
-    <div className="thc-list-editor">
-      <h4>{title}</h4>
-      <div className="thc-chip-row" onDragEnter={allowDrop} onDragOver={allowDrop} onDrop={(e) => finishDrop(e, dropAt)}>
-        {items.length === 0 && <span className="thc-muted">אין פריטים עדיין</span>}
-        {items.map((it) => (editing === it ? (
-          <span key={it} className="thc-chip thc-chip-editing">
+    <>
+      <div
+        className={`thc-setlist ${compact ? "is-compact" : ""}`}
+        onDragEnter={allowDrop}
+        onDragOver={allowDrop}
+        onDrop={(e) => finishDrop(e, dropAt)}
+      >
+        {items.length === 0 && <p className="thc-setlist-empty">אין פריטים עדיין</p>}
+        {items.length > 0 && visible.length === 0 && <p className="thc-setlist-empty">לא נמצאו תוצאות ברשימה הזו</p>}
+        {visible.map((it) => (editing === it ? (
+          <div key={it} className="thc-setlist-item is-editing">
             <input
               autoFocus
               value={editValue}
@@ -273,38 +266,41 @@ function ListEditor({ title, items, onChange, onRename, countRecords }) {
                 if (e.key === "Escape") cancelEdit();
               }}
             />
-            <button type="button" className="thc-chip-x" onClick={saveEdit} disabled={saving} aria-label="שמור שם"><Check size={12} /></button>
-            <button type="button" className="thc-chip-x" onClick={cancelEdit} disabled={saving} aria-label="בטל עריכה"><X size={12} /></button>
-          </span>
+            <span className="thc-setlist-actions">
+              <button type="button" onClick={saveEdit} disabled={saving} aria-label="שמור שם"><Check size={15} /></button>
+              <button type="button" onClick={cancelEdit} disabled={saving} aria-label="בטל עריכה"><X size={15} /></button>
+            </span>
+          </div>
         ) : (
-          <Chip
-            key={it}
-            className={chipClass(it)}
-            onEdit={onRename ? () => startEdit(it) : undefined}
-            onRemove={() => onChange(items.filter((x) => x !== it))}
-            {...dragProps(it)}
-          >
-            {it}
-          </Chip>
+          <div key={it} className={itemClass(it)} {...dragProps(it)}>
+            <span className="thc-setlist-text">{it}</span>
+            <span className="thc-setlist-actions">
+              {onRename && (
+                <button type="button" onClick={() => startEdit(it)} aria-label={`ערוך את ${it}`} title="עריכת שם"><Pencil size={14} /></button>
+              )}
+              <button type="button" className="is-delete" onClick={() => onChange(items.filter((x) => x !== it))} aria-label={`הסר את ${it}`} title="הסרה"><X size={15} /></button>
+            </span>
+          </div>
         )))}
       </div>
       {editing !== null && (
-        <p className={`thc-chip-note ${editError ? "is-error" : ""}`} role={editError ? "alert" : undefined}>
-          {editError || `שינוי השם יעדכן גם ${countRecords(editing)} רשומות קיימות`}
+        <p className={`thc-setlist-note ${editError ? "is-error" : ""}`} role={editError ? "alert" : undefined}>
+          {editError || (countRecords(editing) ? `שינוי השם יעדכן גם ${recordsText(countRecords(editing))}` : "אין רשומות קיימות לשם הזה")}
         </p>
       )}
-      {editing === null && notice && <p className="thc-chip-note is-done" role="status">{notice}</p>}
-      <div className="thc-add-row">
+      {editing === null && notice && <p className="thc-setlist-note is-done" role="status">{notice}</p>}
+      <div className="thc-setlist-add">
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && add()}
           onPaste={handlePaste}
-          placeholder="הוסף פריט חדש, או הדבק כאן רשימה שלמה (שורה לכל פריט)..."
+          aria-label="פריט חדש"
+          placeholder="הוספת פריט, או הדבקת רשימה שלמה (שורה לכל פריט)"
         />
-        <button onClick={add}><Plus size={16} /> הוסף</button>
+        <button type="button" onClick={add}><Plus size={16} /> הוספה</button>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -1170,50 +1166,105 @@ function ArchiveTab({ teacherEntries, instructorEntries, archives, onCreate, onD
   );
 }
 
+const SETTINGS_LISTS = [
+  { id: "teacherNames", label: "שמות מורים", group: "אנשים", kind: "teachers" },
+  { id: "instructorNames", label: "שמות מדריכים", group: "אנשים", kind: "instructors" },
+  { id: "teacherReasons", label: "סיבות - מורים", group: "סיבות ביטול" },
+  { id: "instructorReasons", label: "סיבות - מדריכים", group: "סיבות ביטול" },
+  { id: "subjects", label: "מקצועות", group: "לימודים" },
+  { id: "grades", label: "שכבות", group: "לימודים" },
+  { id: "parallels", label: "מספרי כיתה", group: "לימודים" },
+];
+const SETTINGS_GROUPS = [...new Set(SETTINGS_LISTS.map((l) => l.group))];
+const THRESHOLD_ID = "alertThreshold";
+
+/** One list at a time, chosen from a side menu; the search covers every list. */
 function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instructorEntries }) {
+  const [activeId, setActiveId] = useState(SETTINGS_LISTS[0].id);
+  const [query, setQuery] = useState("");
   const upd = (key) => (val) => onChange({ ...settings, [key]: val });
-  const countOf = (entries) => (name) => entries.filter((e) => e.name === name).length;
+
+  const key = searchKey(query);
+  const hits = (list, k = key) => settings[list.id].filter((it) => searchKey(it).includes(k)).length;
+  const active = SETTINGS_LISTS.find((l) => l.id === activeId);
+  const entriesOf = (kind) => (kind === "teachers" ? teacherEntries : instructorEntries);
+
+  const search = (value) => {
+    setQuery(value);
+    const k = searchKey(value);
+    if (!k || (active && hits(active, k) > 0)) return;
+    const first = SETTINGS_LISTS.find((l) => hits(l, k) > 0); // Open the first list that has a match.
+    if (first) setActiveId(first.id);
+  };
+
+  const menuItem = (id, label, count, dim) => (
+    <button
+      key={id}
+      type="button"
+      className={`thc-settings-link ${activeId === id ? "is-active" : ""} ${dim ? "is-dim" : ""}`}
+      aria-current={activeId === id ? "true" : undefined}
+      onClick={() => setActiveId(id)}
+    >
+      <span>{label}</span>
+      {count !== null && <span className="thc-settings-count">{count}</span>}
+    </button>
+  );
+
   return (
-    <>
-    <p className="thc-import-hint">
-      גררו פריט כדי לשנות את הסדר שלו בתוך הרשימה. בשמות מורים ומדריכים, העיפרון מאפשר לשנות שם, והשינוי יחול גם על כל הרשומות הקיימות.
-    </p>
-    <div className="thc-settings-grid">
-      <ListEditor
-        title="שמות מורים"
-        items={settings.teacherNames}
-        onChange={upd("teacherNames")}
-        onRename={(from, to) => onRenamePerson("teachers", from, to)}
-        countRecords={countOf(teacherEntries)}
-      />
-      <ListEditor
-        title="שמות מדריכים"
-        items={settings.instructorNames}
-        onChange={upd("instructorNames")}
-        onRename={(from, to) => onRenamePerson("instructors", from, to)}
-        countRecords={countOf(instructorEntries)}
-      />
-      <ListEditor title="מקצועות" items={settings.subjects} onChange={upd("subjects")} />
-      <ListEditor title="שכבות" items={settings.grades} onChange={upd("grades")} />
-      <ListEditor title="סיבות ביטול — מורים" items={settings.teacherReasons} onChange={upd("teacherReasons")} />
-      <ListEditor title="סיבות ביטול — מדריכים" items={settings.instructorReasons} onChange={upd("instructorReasons")} />
-      <ListEditor title="מספרי כיתה" items={settings.parallels} onChange={upd("parallels")} />
-      <div className="thc-list-editor">
-        <h4>סף התראה (שעות)</h4>
-        <p className="thc-import-hint" style={{ marginBottom: 10 }}>
-          מורה/מדריך שחצה כמות שעות זו (בטווח שנבחר בסיכום השנתי) יסומן אוטומטית באזהרה.
-        </p>
-        <input
-          type="number"
-          min="1"
-          step="1"
-          value={settings.alertThreshold}
-          onChange={(e) => { const n = Math.round(Number(e.target.value)); if (n >= 1) upd("alertThreshold")(n); }}
-          style={{ width: 100, padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 8, fontFamily: "Assistant, sans-serif", fontSize: 14 }}
-        />
-      </div>
+    <div className="thc-settings">
+      <nav className="thc-settings-nav" aria-label="רשימות הגדרות">
+        <label className="thc-settings-search">
+          <Search size={16} aria-hidden="true" />
+          <input value={query} onChange={(e) => search(e.target.value)} placeholder="חיפוש בכל הרשימות" aria-label="חיפוש בכל הרשימות" />
+          {query && <button type="button" onClick={() => search("")} aria-label="ניקוי החיפוש"><X size={14} /></button>}
+        </label>
+        {SETTINGS_GROUPS.map((group) => (
+          <div key={group}>
+            <p className="thc-settings-group">{group}</p>
+            {SETTINGS_LISTS.filter((l) => l.group === group).map((l) => menuItem(l.id, l.label, hits(l), key !== "" && hits(l) === 0))}
+          </div>
+        ))}
+        <p className="thc-settings-group">כללי</p>
+        {menuItem(THRESHOLD_ID, "סף התראה", null, key !== "")}
+      </nav>
+
+      <section className="thc-settings-panel">
+        {active ? (
+          <>
+            <header className="thc-settings-head">
+              <h3>{active.label}</h3>
+              <span>{key ? `${hits(active)} מתוך ${settings[active.id].length}` : `${settings[active.id].length} פריטים`}</span>
+            </header>
+            <p className="thc-settings-hint">
+              {key ? "כדי לגרור פריטים, נקו קודם את החיפוש." : `גררו פריט כדי לשנות את הסדר.${active.kind ? " בעיפרון משנים שם, גם בכל הרשומות הקיימות." : ""}`}
+            </p>
+            <ListEditor
+              key={active.id}
+              items={settings[active.id]}
+              query={query}
+              onChange={upd(active.id)}
+              onRename={active.kind ? (from, to) => onRenamePerson(active.kind, from, to) : undefined}
+              countRecords={active.kind ? (name) => entriesOf(active.kind).filter((e) => e.name === name).length : undefined}
+            />
+          </>
+        ) : (
+          <>
+            <header className="thc-settings-head"><h3>סף התראה</h3></header>
+            <p className="thc-settings-hint">מורה או מדריך שחצו כמות שעות זו (בטווח שנבחר בסיכום השנתי) יסומנו אוטומטית באזהרה.</p>
+            <label className="thc-settings-threshold">
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={settings.alertThreshold}
+                onChange={(e) => { const n = Math.round(Number(e.target.value)); if (n >= 1) upd("alertThreshold")(n); }}
+              />
+              שעות
+            </label>
+          </>
+        )}
+      </section>
     </div>
-    </>
   );
 }
 
@@ -1898,30 +1949,8 @@ export default function App() {
           text-align: left;
         }
 
-        .thc-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-        @media (max-width: 760px) { .thc-settings-grid { grid-template-columns: 1fr; } }
-        .thc-list-editor {
-          background: var(--paper);
-          border: 1px solid var(--line);
-          border-radius: 14px;
-          padding: 16px 18px;
-        }
-        .thc-list-editor h4 { font-family: 'Frank Ruhl Libre', serif; margin: 0 0 10px; color: var(--teal); font-size: 15px; }
-        .thc-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 26px; }
-        .thc-chip {
-          background: #F1F2EF; border: 1px solid var(--line); border-radius: 999px;
-          padding: 5px 6px 5px 10px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px;
-        }
         .thc-chip-x { border: none; background: #E1E4DE; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink-soft); }
         .thc-chip-x:hover { background: #A6432B33; color: #A6432B; }
-        .thc-add-row { display: flex; gap: 8px; }
-        .thc-add-row input {
-          flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-family: 'Assistant', sans-serif; font-size: 13px;
-        }
-        .thc-add-row button {
-          border: none; background: var(--teal); color: #F3F0E6; border-radius: 8px; padding: 0 14px;
-          font-weight: 700; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
-        }
         .thc-holiday-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; min-height: 26px; }
         .thc-holiday-row {
           display: flex; align-items: center; gap: 10px; background: #F1F2EF; border: 1px solid var(--line);
