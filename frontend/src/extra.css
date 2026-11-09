@@ -411,11 +411,24 @@ html, body { margin: 0; background: #EEF2F7; }
 @media (hover: none) { .thc-team-member svg { opacity: 1; } }
 .thc-team-member:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
-/* Teams tab */
-.thc-team-title { margin: 8px 2px 14px; font-family: 'Frank Ruhl Libre', serif; font-size: 24px; color: var(--ink); }
-.thc-team-table tr.is-selected td { background: #E6F0F8; }
-.thc-team-link { font-weight: 700; }
-.thc-team-hours { min-width: 220px; }
-.thc-team-hours > span:last-child { margin-inline-start: 10px; font-family: 'Roboto Mono', monospace; font-size: 13px; }
-.thc-team-hours .thc-barlist-track { display: inline-block; width: 160px; vertical-align: middle; }
-.thc-team-hours .thc-barlist-fill { display: block; }
+/* Teams tab: teams in a side menu, details or a comparison beside it */
+.thc-teamview { min-height: 480px; }
+.thc-teamview-mode { display: flex; margin-bottom: 4px; }
+.thc-teamview-mode button { flex: 1; }
+.thc-teamview-link { justify-content: flex-start; }
+.thc-teamview-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; margin-inline-end: auto; }
+.thc-teamview-name small { font-size: 12px; font-weight: 400; color: var(--ink-soft); }
+.thc-settings-link.is-active .thc-teamview-name small { color: #1F5A8C; }
+.thc-teamview-check {
+  display: grid; place-items: center; flex-shrink: 0; width: 18px; height: 18px;
+  border: 1.5px solid #A5B0C4; border-radius: 5px; background: #fff;
+}
+.thc-teamview-check.is-on { border-color: var(--blue); background: var(--blue); color: #fff; }
+.thc-teamview-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 18px 0 10px; }
+.thc-teamview-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; margin: 6px 0 12px; }
+.thc-compare-table th[scope="row"] { text-align: right; font-weight: 600; color: var(--ink); background: #F8FAFC; }
+.thc-compare-table td.is-peak { background: #FDF0E3; color: #A85510; font-weight: 700; }
+@media (max-width: 900px) {
+  .thc-teamview-kpis, .thc-teamview-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) { .thc-teamview-row { grid-template-columns: 1fr; } }
