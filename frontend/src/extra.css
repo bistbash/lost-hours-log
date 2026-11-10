@@ -432,3 +432,50 @@ html, body { margin: 0; background: #EEF2F7; }
   .thc-teamview-kpis, .thc-teamview-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) { .thc-teamview-row { grid-template-columns: 1fr; } }
+
+/* Backup dialog: everything, one month, or a date range */
+.thc-dialog-backdrop {
+  position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px;
+  background: rgba(20, 32, 54, 0.45);
+}
+.thc-dialog {
+  width: min(520px, 100%); max-height: calc(100vh - 40px); overflow: auto;
+  background: #fff; border-radius: 16px; padding: 22px 24px 20px; text-align: right;
+  box-shadow: 0 24px 60px rgba(20, 32, 54, 0.28); color: var(--ink); outline: none;
+}
+.thc-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.thc-dialog-head h3 { margin: 0; font-size: 19px; }
+.thc-dialog-close { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-soft); cursor: pointer; }
+.thc-dialog-close:hover { background: #EEF2F7; color: var(--ink); }
+.thc-dialog-sub { margin: 4px 0 14px; color: var(--ink-soft); font-size: 14px; }
+.thc-backup-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.thc-backup-mode {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 8px;
+  border: 1.5px solid #DCE3EC; border-radius: 12px; background: #fff; color: var(--ink);
+  font: inherit; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.thc-backup-mode svg { color: #6B7A90; margin-bottom: 2px; }
+.thc-backup-mode b { font-size: 14.5px; }
+.thc-backup-mode small { font-size: 12px; color: var(--ink-soft); }
+.thc-backup-mode:hover { border-color: #A9BCD3; background: #F8FAFC; }
+.thc-backup-mode.is-active { border-color: var(--blue); background: #EAF2FB; }
+.thc-backup-mode.is-active svg, .thc-backup-mode.is-active b { color: #1F5A8C; }
+.thc-dialog-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.thc-dialog-field { display: flex; flex-direction: column; gap: 5px; margin-top: 16px; font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.thc-root .thc-dialog-field select, .thc-root .thc-dialog-field input {
+  height: 40px; padding: 0 10px; border: 1.5px solid #DCE3EC; border-radius: 9px; background: #fff;
+  font: inherit; font-size: 14.5px; font-weight: 400; color: var(--ink);
+}
+.thc-root .thc-dialog-field select:focus, .thc-root .thc-dialog-field input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(46, 117, 182, 0.15); }
+.thc-dialog-summary { margin: 18px 0 0; padding: 11px 14px; border-radius: 10px; background: #F1F5FA; font-size: 14px; color: var(--ink); }
+.thc-dialog-summary.is-empty { background: #FDF0E3; color: #8A4A10; }
+.thc-dialog-note { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-soft); }
+.thc-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.thc-dialog-actions button { display: inline-flex; align-items: center; gap: 7px; height: 40px; margin: 0; padding: 0 18px; }
+.thc-dialog-actions .thc-primary-btn:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 520px) {
+  .thc-backup-modes { grid-template-columns: 1fr; }
+  .thc-backup-mode { flex-direction: row; justify-content: flex-start; gap: 10px; padding: 12px 14px; }
+  .thc-backup-mode small { margin-inline-start: auto; }
+  .thc-dialog-dates { grid-template-columns: 1fr; }
+}

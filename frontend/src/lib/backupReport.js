@@ -228,7 +228,7 @@ function addPopulationReport(wb, pop, list, ctx) {
   const ws = newSheet(wb, pop.report, theme, REPORT_WIDTHS);
   let row = reportHeader(ws, ctx, theme, `דוח שעות שאבדו - ${pop.plural}`);
   if (!list.length) {
-    put(ws, row, 2, 9, `אין רשומות של ${pop.plural} בגיבוי זה.`, { font: font(12, SOFT) });
+    put(ws, row, 2, 9, `אין רשומות של ${pop.plural} ${ctx.partial ? "בתקופה זו" : "בגיבוי זה"}.`, { font: font(12, SOFT) });
     return;
   }
   const staff = people(list);
@@ -322,7 +322,7 @@ function addSummary(wb, teachers, instructors, ctx) {
   const overOf = (staff) => staff.filter((p) => p.hours >= ctx.threshold).length;
   const over = overOf(tStaff) + overOf(iStaff);
 
-  let row = reportHeader(ws, ctx, theme, "גיבוי דו\"ח איבוד שעות - סיכום");
+  let row = reportHeader(ws, ctx, theme, ctx.partial ? "דו\"ח איבוד שעות - סיכום" : "גיבוי דו\"ח איבוד שעות - סיכום");
   row = kpiRow(ws, row, theme, [
     { value: round1(total), label: 'סה"כ שעות שאבדו' },
     { value: all.length, label: "רשומות" },
@@ -398,8 +398,8 @@ function periodText(entries) {
   return dates.length ? `תקופה: ${dateText(dates[0])} - ${dateText(dates[dates.length - 1])}` : "ללא רשומות";
 }
 
-/** Builds the workbook and returns its bytes. `label` names an archive when exporting one. */
-export async function buildBackupWorkbook({ teacherEntries, instructorEntries, alertThreshold, label = "", now = new Date(), logo = true }) {
+/** Builds the workbook and returns its bytes. `label` names an archive when exporting one; `period` names a chosen date range. */
+export async function buildBackupWorkbook({ teacherEntries, instructorEntries, alertThreshold, label = "", period = "", now = new Date(), logo = true }) {
   const { default: ExcelJS } = await import("exceljs");
   const wb = new ExcelJS.Workbook();
   wb.creator = "צוות תפעול הדרכה";
@@ -408,8 +408,9 @@ export async function buildBackupWorkbook({ teacherEntries, instructorEntries, a
 
   const ctx = {
     label,
+    partial: Boolean(period),
     threshold: alertThreshold,
-    periodText: periodText([...teacherEntries, ...instructorEntries]),
+    periodText: period ? `תקופה: ${period}` : periodText([...teacherEntries, ...instructorEntries]),
     generatedText: dateText(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`),
     logoId: logo ? await loadLogo(wb) : null,
   };

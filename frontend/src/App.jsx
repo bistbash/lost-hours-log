@@ -8,6 +8,7 @@ import * as XLSX from "xlsx";
 import { archiveOps, entryOps, fetchState, fetchVersion, patchSettings, renamePerson, saveLastExport } from "./lib/api.js";
 import { DAY_COLORS, MONTH_COLORS, fmt, inRange, people as peopleOf, searchKey } from "./lib/stats.js";
 import { downloadBackup } from "./lib/backupReport.js";
+import BackupDialog from "./components/BackupDialog.jsx";
 import { NamePicker, RangeBar } from "./components/ui.jsx";
 import ReportsTab from "./components/ReportsTab.jsx";
 import PeopleTab from "./components/PeopleTab.jsx";
@@ -1320,6 +1321,7 @@ export default function App() {
   const [instructorEntries, setInstructorEntries] = useState([]);
   const [lastExportAt, setLastExportAt] = useState(null);
   const [backingUp, setBackingUp] = useState(false);
+  const [backupDialogOpen, setBackupDialogOpen] = useState(false);
   const [archives, setArchives] = useState([]);
   const [personFocus, setPersonFocus] = useState(null);
   const [undo, setUndo] = useState(null);
@@ -1500,9 +1502,23 @@ export default function App() {
     }
   }, [settings.alertThreshold]);
 
-  const handleExportBackup = useCallback(async () => {
+  const openBackupDialog = useCallback(() => setBackupDialogOpen(true), []);
+
+  /** Runs after the dialog: a full backup, or a report for one month or a date range. */
+  const handleExportBackup = useCallback(async (choice) => {
+    setBackupDialogOpen(false);
     const now = new Date();
     const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    if (choice.scope !== "all") {
+      const part = choice.period.replace(/\//g, ".").replace(/[^0-9.\u0590-\u05FF]+/g, "-").replace(/^-|-$/g, "");
+      await runBackup({
+        teacherEntries: choice.teacherEntries,
+        instructorEntries: choice.instructorEntries,
+        period: choice.period,
+        filename: `דוח-שעות-איבוד-${part}.xlsx`,
+      });
+      return; // A partial report is not a backup, so the last-backup date stays.
+    }
     const done = await runBackup({ teacherEntries, instructorEntries, filename: `גיבוי-שעות-איבוד-${stamp}.xlsx` });
     if (!done) return;
     setLastExportAt(now.getTime());
@@ -2082,7 +2098,7 @@ export default function App() {
           <button
             type="button"
             className="thc-backup-btn"
-            onClick={handleExportBackup}
+            onClick={openBackupDialog}
             disabled={loading || backingUp || teacherEntries.length + instructorEntries.length === 0}
             title={lastExportAt ? `גיבוי אחרון: ${new Date(lastExportAt).toLocaleDateString("he-IL")}` : "עדיין לא נוצר גיבוי"}
           >
@@ -2133,7 +2149,7 @@ export default function App() {
                 teacherEntries={teacherEntries}
                 instructorEntries={instructorEntries}
                 lastExportAt={lastExportAt}
-                onExportBackup={handleExportBackup}
+                onExportBackup={openBackupDialog}
                 alertThreshold={settings.alertThreshold}
                 onPickPerson={pickPerson}
               />
@@ -2222,6 +2238,15 @@ export default function App() {
           <span>{undo.entries.length === 1 ? "הרשומה נמחקה" : `${undo.entries.length} רשומות נמחקו`}</span>
           <button type="button" onClick={undoRemove}>ביטול המחיקה</button>
         </div>
+      )}
+
+      {backupDialogOpen && (
+        <BackupDialog
+          teacherEntries={teacherEntries}
+          instructorEntries={instructorEntries}
+          onConfirm={handleExportBackup}
+          onClose={() => setBackupDialogOpen(false)}
+        />
       )}
     </div>
   );
