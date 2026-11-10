@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle, CloudDownload, Download } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, CloudDownload, Download } from "lucide-react";
 import { BarList, Kpi, axisTick, numTick, tooltipStyle } from "./ui.jsx";
 import { SERIES } from "./ReportsTab.jsx";
-import { byWeekday, fmt, groupHours, monthKey, monthKeyLabel, monthsSpan, people, pct, sumHours } from "../lib/stats.js";
+import { DAY_NAMES, byWeekday, fmt, groupHours, monthKey, monthKeyLabel, monthsSpan, people, pct, sumHours } from "../lib/stats.js";
 
 const ym = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
@@ -117,35 +117,53 @@ export default function OverviewTab({ teacherEntries, instructorEntries, lastExp
 }
 
 /** Which weekday loses the most hours, for all reasons or for one. */
+const reasonOf = (e) => e.reason || "לא צוין";
+const quoted = (names) => names.map((n) => `"${n}"`).join(", ");
+
+/** The weekday with the most hours lost, for all reasons or for any set of reasons together. */
 function BusiestDay({ entries }) {
-  const [reason, setReason] = useState("");
-  const reasons = useMemo(() => groupHours(entries, (e) => e.reason), [entries]);
-  const current = reasons.some((r) => r.name === reason) ? reason : ""; // The chosen reason may have been removed.
+  const [chosen, setChosen] = useState([]);
+  const reasons = useMemo(() => groupHours(entries, reasonOf), [entries]);
+  const current = chosen.filter((name) => reasons.some((r) => r.name === name)); // A chosen reason may have been removed.
   const filtered = useMemo(
-    () => (current ? entries.filter((e) => (e.reason || "לא צוין") === current) : entries),
-    [entries, current],
+    () => (current.length ? entries.filter((e) => current.includes(reasonOf(e))) : entries),
+    [entries, current.join("|")], // eslint-disable-line react-hooks/exhaustive-deps
   );
-  const days = useMemo(() => byWeekday(filtered), [filtered]);
+  const days = useMemo(() => {
+    const list = byWeekday(filtered);
+    if (current.length < 2) return list;
+    // With several reasons, each bar also knows how its hours split between them, for the tooltip.
+    return list.map((d) => {
+      const i = DAY_NAMES.indexOf(d.name);
+      const onDay = filtered.filter((e) => new Date(`${e.date}T00:00:00`).getDay() === i);
+      return { ...d, parts: current.map((name) => ({ name, value: sumHours(onDay.filter((e) => reasonOf(e) === name)) })) };
+    });
+  }, [filtered, current.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
   const total = sumHours(filtered);
   const peak = Math.max(0, ...days.map((d) => d.value));
   const busiest = days.filter((d) => peak > 0 && d.value === peak);
+  const toggle = (name) => setChosen(current.includes(name) ? current.filter((n) => n !== name) : [...current, name]);
+
+  let scope = "";
+  if (current.length === 1) scope = ` בסיבה ${quoted(current)}`;
+  if (current.length > 1) scope = ` ב-${current.length} הסיבות שנבחרו יחד (${quoted(current)})`;
 
   return (
     <div className="thc-card">
       <div className="thc-subject-header">
         <h3>היום עם הכי הרבה ביטולים</h3>
-        <label className="thc-day-filter">
-          סיבה
-          <select value={current} onChange={(e) => setReason(e.target.value)}>
-            <option value="">כל הסיבות</option>
-            {reasons.map((r) => <option key={r.name} value={r.name}>{r.name}</option>)}
-          </select>
-        </label>
+        <ReasonPicker reasons={reasons} chosen={current} onToggle={toggle} onClear={() => setChosen([])} />
       </div>
       <div className="thc-day-layout">
         <div className="thc-day-headline">
           <strong>{busiest.length ? `${busiest.length > 1 ? "ימים" : "יום"} ${busiest.map((d) => d.name).join(", ")}` : "—"}</strong>
-          {busiest.length > 0 && <span>{peak === 1 ? "שעה אחת" : `${fmt(peak)} שעות`}{busiest.length > 1 ? " בכל יום" : ""}, {pct(peak, total)} מהשעות{current ? ` בסיבה "${current}"` : ""}</span>}
+          {busiest.length > 0 && <span>{peak === 1 ? "שעה אחת" : `${fmt(peak)} שעות`}{busiest.length > 1 ? " בכל יום" : ""}, {pct(peak, total)} מהשעות{scope}</span>}
+          {busiest.length === 1 && busiest[0].parts?.length > 0 && (
+            <ul className="thc-day-parts">
+              {busiest[0].parts.map((p) => <li key={p.name}><span>{p.name}</span><b>{fmt(p.value)}</b></li>)}
+            </ul>
+          )}
+          {busiest.length === 0 && current.length > 0 && <span>אין רשומות בסיבות שנבחרו.</span>}
         </div>
         <ResponsiveContainer width="100%" height={210}>
           <BarChart data={days} margin={{ top: 20, right: 8, left: 8, bottom: 0 }} barCategoryGap="30%">
@@ -154,7 +172,11 @@ function BusiestDay({ entries }) {
             <Tooltip
               contentStyle={tooltipStyle}
               cursor={{ fill: "rgba(27,42,74,0.06)" }}
-              formatter={(v, _n, item) => [`${fmt(v)} שעות · ${item.payload.count} רשומות (${pct(v, total)})`, "שעות"]}
+              formatter={(v, _n, item) => {
+                const head = `${fmt(v)} שעות · ${item.payload.count} רשומות (${pct(v, total)})`;
+                const parts = item.payload.parts;
+                return [parts?.length ? `${head} — ${parts.map((p) => `${p.name}: ${fmt(p.value)}`).join(", ")}` : head, "שעות"];
+              }}
             />
             <Bar
               isAnimationActive={false}
@@ -169,6 +191,57 @@ function BusiestDay({ entries }) {
           </BarChart>
         </ResponsiveContainer>
       </div>
+    </div>
+  );
+}
+
+/** A dropdown of reasons with checkboxes; none checked means all reasons. */
+function ReasonPicker({ reasons, chosen, onToggle, onClear }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+
+  let label = "כל הסיבות";
+  if (chosen.length === 1) label = chosen[0];
+  if (chosen.length > 1) label = `${chosen.length} סיבות: ${chosen.join(", ")}`;
+
+  return (
+    <div className="thc-day-filter" ref={ref}>
+      <span>סיבות</span>
+      <button type="button" className={`thc-reason-btn ${chosen.length ? "is-set" : ""}`} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)} title={label}>
+        <span>{label}</span>
+        <ChevronDown size={15} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="thc-reason-menu" role="group" aria-label="סינון לפי סיבות">
+          <p>סמנו סיבה אחת או יותר. השעות שלהן יחוברו יחד.</p>
+          <ul>
+            {reasons.map((r) => {
+              const on = chosen.includes(r.name);
+              return (
+                <li key={r.name}>
+                  <button type="button" role="checkbox" aria-checked={on} className={on ? "is-on" : ""} onClick={() => onToggle(r.name)}>
+                    <span className="thc-reason-check" aria-hidden="true">{on && <Check size={13} />}</span>
+                    <span className="thc-reason-name">{r.name}</span>
+                    <small>{fmt(r.value)} ש׳</small>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <footer>
+            <button type="button" className="thc-link" onClick={onClear} disabled={!chosen.length}>כל הסיבות</button>
+            <button type="button" className="thc-reason-done" onClick={() => setOpen(false)}>סגירה</button>
+          </footer>
+        </div>
+      )}
     </div>
   );
 }
