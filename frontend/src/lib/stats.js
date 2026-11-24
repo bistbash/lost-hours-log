@@ -21,6 +21,8 @@ export const MONTH_COLORS = [
 
 export const hoursOf = (e) => Number(e.hours || 0);
 export const sumHours = (list) => list.reduce((s, e) => s + hoursOf(e), 0);
+/** Hours of entries where someone filled in, so the pupils had no gap. They still count as lost hours. */
+export const filledHours = (list) => sumHours(list.filter((e) => e.substitute));
 export const monthKey = (dateStr) => (dateStr ? dateStr.slice(0, 7) : "");
 export const monthKeyLabel = (key) => {
   const [y, m] = key.split("-");

@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AlertTriangle, Check, ChevronDown, CloudDownload, Download } from "lucide-react";
-import { BarList, Kpi, axisTick, numTick, tooltipStyle } from "./ui.jsx";
+import { BarList, Kpi, axisTick, legendStyle, numTick, tooltipStyle } from "./ui.jsx";
 import { SERIES } from "./ReportsTab.jsx";
-import { DAY_NAMES, byWeekday, fmt, groupHours, monthKey, monthKeyLabel, monthsSpan, people, pct, sumHours } from "../lib/stats.js";
+import { DAY_NAMES, byWeekday, filledHours, fmt, groupHours, monthKey, monthKeyLabel, monthsSpan, people, pct, sumHours } from "../lib/stats.js";
 
 const ym = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
@@ -20,6 +20,8 @@ export default function OverviewTab({ teacherEntries, instructorEntries, lastExp
   const hoursThisMonth = sumHours(tagged.filter((e) => monthKey(e.date) === thisMonth));
   const hoursLastMonth = sumHours(tagged.filter((e) => monthKey(e.date) === lastMonth));
   const total = sumHours(tagged);
+  const filled = filledHours(tagged);
+  const filledCount = tagged.filter((e) => e.substitute).length;
 
   const teachers = useMemo(() => people(teacherEntries), [teacherEntries]);
   const instructors = useMemo(() => people(instructorEntries), [instructorEntries]);
@@ -75,6 +77,7 @@ export default function OverviewTab({ teacherEntries, instructorEntries, lastExp
         <Kpi label='סה"כ שעות שאבדו' value={fmt(total)} sub={`${tagged.length} רשומות`} />
         <Kpi label="אנשי צוות עם היעדרות" value={teachers.length + instructors.length} sub={`${teachers.length} מורים · ${instructors.length} מדריכים · ממוצע ${fmt(total / Math.max(teachers.length + instructors.length, 1))} שעות`} />
         <Kpi label={`מעל סף ${alertThreshold} שעות`} value={overThreshold} sub={overThreshold ? "מסומנים בדגל אדום" : "אף אחד עדיין"} danger={overThreshold > 0} />
+        <Kpi label="שעות שכוסו במילוי מקום" value={fmt(filled)} sub={filledCount ? `${pct(filled, total)} מהשעות · ${filledCount === 1 ? "רשומה אחת" : `${filledCount} רשומות`}` : "עדיין לא סומן מילוי מקום"} />
         <Kpi label="הסיבה הנפוצה" value={<span className="thc-kpi-text">{reasons[0]?.name || "—"}</span>} sub={reasons[0] ? `${fmt(reasons[0].value)} שעות (${pct(reasons[0].value, total)})` : null} />
       </div>
 
@@ -87,7 +90,7 @@ export default function OverviewTab({ teacherEntries, instructorEntries, lastExp
               <XAxis dataKey="month" tick={axisTick} tickLine={false} axisLine={{ stroke: "#D8DDD6" }} />
               <YAxis tick={numTick} tickLine={false} axisLine={false} allowDecimals={false} />
               <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(27,42,74,0.06)" }} formatter={(v, n) => [`${fmt(v)} שעות`, n]} />
-              <Legend wrapperStyle={{ fontFamily: "Assistant", fontWeight: 600 }} />
+              <Legend iconSize={10} wrapperStyle={legendStyle} />
               <Bar isAnimationActive={false} dataKey="teachers" name={SERIES.teachers.label} stackId="a" fill={SERIES.teachers.color} stroke="#fff" strokeWidth={1} />
               <Bar isAnimationActive={false} dataKey="instructors" name={SERIES.instructors.label} stackId="a" fill={SERIES.instructors.color} stroke="#fff" strokeWidth={1} radius={[4, 4, 0, 0]} />
             </BarChart>

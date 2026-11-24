@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BarList, Kpi, RangeBar, axisTick, numTick, tooltipStyle } from "./ui.jsx";
+import { BarList, Kpi, RangeBar, axisTick, legendStyle, numTick, tooltipStyle } from "./ui.jsx";
 import {
   byClass, byWeekday, fmt, groupHours, inRange, monthKey, monthKeyLabel, monthsSpan, people, pct, previousPeriod, sumHours,
 } from "../lib/stats.js";
@@ -95,7 +95,7 @@ export default function ReportsTab({ teacherEntries, instructorEntries, settings
             <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(27,42,74,0.06)" }} formatter={(v, n) => [`${fmt(v)} שעות`, n]} />
             {dataset === "all" ? (
               <>
-                <Legend wrapperStyle={{ fontFamily: "Assistant", fontWeight: 600 }} />
+                <Legend iconSize={10} wrapperStyle={legendStyle} />
                 <Bar isAnimationActive={false} dataKey="teachers" name={SERIES.teachers.label} stackId="a" fill={SERIES.teachers.color} stroke="#fff" strokeWidth={1} />
                 <Bar isAnimationActive={false} dataKey="instructors" name={SERIES.instructors.label} stackId="a" fill={SERIES.instructors.color} stroke="#fff" strokeWidth={1} radius={[4, 4, 0, 0]} />
               </>

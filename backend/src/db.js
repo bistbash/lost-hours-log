@@ -164,7 +164,7 @@ export function cleanEntry(raw, { partial = false } = {}) {
   if (!raw || typeof raw !== "object") return { error: "רשומה לא תקינה" };
   const out = {};
   const has = (k) => Object.prototype.hasOwnProperty.call(raw, k);
-  for (const k of ["name", "subject", "grade", "parallel", "reason"]) if (!partial || has(k)) out[k] = text(raw[k]);
+  for (const k of ["name", "subject", "grade", "parallel", "reason", "substitute"]) if (!partial || has(k)) out[k] = text(raw[k]);
   if (!partial || has("comment")) out.comment = text(raw.comment, 1000);
   if (!partial || has("date")) {
     const date = text(raw.date, 10);
@@ -295,7 +295,8 @@ export async function applyArchiveOps(ops) {
 }
 
 /**
- * Renames a person in the names list, their teams and all of their entries, as one change.
+ * Renames a person in the names list, their teams, all of their entries and wherever they filled in for
+ * someone, as one change.
  * Refuses a name already in use: that would silently merge two people's records.
  */
 export async function renamePerson(entriesKey, namesKey, teamKey, rawFrom, rawTo) {
@@ -303,7 +304,9 @@ export async function renamePerson(entriesKey, namesKey, teamKey, rawFrom, rawTo
   const to = text(rawTo);
   if (!from || !to) throw badRequest("חסר שם");
   if (from === to) throw badRequest("השם לא השתנה");
-  return withLockedKeys({ [entriesKey]: [], "th-settings": {} }, (current) => {
+  const otherKey = entriesKey === "th-entries-teachers" ? "th-entries-instructors" : "th-entries-teachers";
+  const otherNamesKey = namesKey === "teacherNames" ? "instructorNames" : "teacherNames";
+  return withLockedKeys({ [entriesKey]: [], [otherKey]: [], "th-settings": {} }, (current) => {
     const settings = current["th-settings"] && typeof current["th-settings"] === "object" && !Array.isArray(current["th-settings"]) ? current["th-settings"] : {};
     const names = Array.isArray(settings[namesKey]) ? settings[namesKey] : [];
     const entries = Array.isArray(current[entriesKey]) ? current[entriesKey] : [];
@@ -312,10 +315,14 @@ export async function renamePerson(entriesKey, namesKey, teamKey, rawFrom, rawTo
     if (names.includes(to) || inEntries(to)) throw badRequest(`השם "${to}" כבר קיים`);
     let updated = 0;
     const now = Date.now();
+    const others = Array.isArray(current[otherKey]) ? current[otherKey] : [];
+    // A substitute is stored by name only: when the other list has the same name, it may mean that person, so it stays.
+    const shared = (Array.isArray(settings[otherNamesKey]) && settings[otherNamesKey].includes(from)) || others.some((e) => e.name === from);
+    const renameSubstitute = (e) => (!shared && e.substitute === from ? { ...e, substitute: to, updatedAt: now } : e);
     const nextEntries = entries.map((e) => {
-      if (e.name !== from) return e;
+      if (e.name !== from) return renameSubstitute(e);
       updated += 1;
-      return { ...e, name: to, updatedAt: now };
+      return { ...renameSubstitute(e), name: to, updatedAt: now };
     });
     const nextSettings = { ...settings, [namesKey]: names.map((n) => (n === from ? to : n)) };
     if (Array.isArray(settings.teams)) {
@@ -324,7 +331,7 @@ export async function renamePerson(entriesKey, namesKey, teamKey, rawFrom, rawTo
       ));
     }
     return {
-      next: { [entriesKey]: nextEntries, "th-settings": nextSettings },
+      next: { [entriesKey]: nextEntries, [otherKey]: others.map(renameSubstitute), "th-settings": nextSettings },
       result: { updated, name: to },
     };
   });

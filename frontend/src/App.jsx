@@ -9,10 +9,12 @@ import { archiveOps, entryOps, fetchState, fetchVersion, patchSettings, renamePe
 import { DAY_COLORS, MONTH_COLORS, fmt, inRange, people as peopleOf, searchKey } from "./lib/stats.js";
 import { downloadBackup } from "./lib/backupReport.js";
 import BackupDialog from "./components/BackupDialog.jsx";
+import Intro from "./components/Intro.jsx";
 import { NamePicker, RangeBar } from "./components/ui.jsx";
 import ReportsTab from "./components/ReportsTab.jsx";
 import PeopleTab from "./components/PeopleTab.jsx";
 import OverviewTab from "./components/OverviewTab.jsx";
+import SubstituteNotes, { findSubstituteNotes } from "./components/SubstituteNotes.jsx";
 import TeamsEditor from "./components/TeamsEditor.jsx";
 import TeamsTab from "./components/TeamsTab.jsx";
 
@@ -76,10 +78,10 @@ const SKY_BANNER_URI = "/banner.jpg";
 
 
 function exportCSV(entries, filename) {
-  const headers = ["שם", "מקצוע", "שכבה", "מספר כיתה", "תאריך", "יום", "חודש", "שעות", "סיבה", "הערה"];
+  const headers = ["שם", "מקצוע", "שכבה", "מספר כיתה", "תאריך", "יום", "חודש", "שעות", "סיבה", "הערה", "מילוי מקום"];
   const escape = (v) => `"${(v ?? "").toString().replace(/"/g, '""')}"`;
   const rows = entries.map((e) =>
-    [e.name, e.subject, e.grade, e.parallel, e.date, dayOfWeekHebrew(e.date), monthHebrew(e.date), e.hours, e.reason, e.comment]
+    [e.name, e.subject, e.grade, e.parallel, e.date, dayOfWeekHebrew(e.date), monthHebrew(e.date), e.hours, e.reason, e.comment, e.substitute]
       .map(escape)
       .join(",")
   );
@@ -108,6 +110,7 @@ const HEADER_MAP = {
   hours: ["שעות מופסדות", "שעות שאבדו", "כמות שעות", "שעות"],
   reason: ["סיבה", "סיבת ביטול"],
   comment: ["הערה חופשית", "הערות", "הערה"],
+  substitute: ["מילוי מקום", "ממלא מקום"],
 };
 
 function detectColumnMap(headerRow) {
@@ -430,7 +433,7 @@ function ImportPanel({ onConfirm, colorAccent, sheetHint, existingEntries = [] }
       colMap = best.map;
       dataRows = aoa.slice(best.idx + 1);
     } else {
-      colMap = { name: 0, subject: 1, grade: 2, parallel: 3, date: 4, hours: 5, reason: 6, comment: 7 };
+      colMap = { name: 0, subject: 1, grade: 2, parallel: 3, date: 4, hours: 5, reason: 6, comment: 7, substitute: 8 };
       dataRows = aoa;
     }
     const rows = [];
@@ -451,6 +454,7 @@ function ImportPanel({ onConfirm, colorAccent, sheetHint, existingEntries = [] }
         hours,
         reason: (get("reason") ?? "").toString().trim(),
         comment: (get("comment") ?? "").toString().trim(),
+        substitute: (get("substitute") ?? "").toString().trim(),
       });
     });
     // Rows already in the system (same name, date, subject and hours) or repeated in the file.
@@ -530,7 +534,7 @@ function ImportPanel({ onConfirm, colorAccent, sheetHint, existingEntries = [] }
       {open && (
         <div className="thc-import-body">
           <p className="thc-import-hint">
-            העמודות הצפויות (בכל סדר, לפי כותרות): <b>שם, מקצוע, שכבה, מספר כיתה, תאריך, שעות, סיבה, הערה</b>.
+            העמודות הצפויות (בכל סדר, לפי כותרות): <b>שם, מקצוע, שכבה, מספר כיתה, תאריך, שעות, סיבה, הערה, מילוי מקום</b>.
             אם יש שורת כותרת כללית מעל שורת העמודות (למשל "מורים"), המערכת תזהה ותדלג עליה אוטומטית.
             אם לא יזוהו כותרות בכלל, הייבוא יניח שזה בדיוק סדר העמודות. שמות/מקצועות/סיבות חדשים שלא קיימים ברשימות ב"הגדרות" יתווספו אליהן אוטומטית.
           </p>
@@ -607,14 +611,24 @@ function ImportPanel({ onConfirm, colorAccent, sheetHint, existingEntries = [] }
 /*  Entry form + table (shared by teachers / instructors)              */
 /* ------------------------------------------------------------------ */
 
+/** Everyone who can fill in, teachers and instructors, with what each one is. The absent person is left out. */
+function substituteOptions(settings, absentName) {
+  const kinds = {};
+  settings.teacherNames.forEach((n) => { kinds[n] = "מורה"; });
+  settings.instructorNames.forEach((n) => { kinds[n] = kinds[n] ? "מורה, מדריך/ה" : "מדריך/ה"; });
+  delete kinds[absentName];
+  return { names: Object.keys(kinds), kinds };
+}
+
 function EntryForm({ names, settings, reasonsList, onAdd, accent, existingEntries }) {
-  const empty = { name: "", subject: "", grade: "", parallel: "", date: "", hours: "", reason: "", comment: "" };
+  const empty = { name: "", subject: "", grade: "", parallel: "", date: "", hours: "", reason: "", comment: "", filled: "", substitute: "" };
   const [form, setForm] = useState(empty);
   const [error, setError] = useState("");
   const [duplicateOf, setDuplicateOf] = useState(null);
   const [holidayWarning, setHolidayWarning] = useState(null);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const substitutes = useMemo(() => substituteOptions(settings, form.name), [settings, form.name]);
 
   const findDuplicate = (f) =>
     (existingEntries || []).find(
@@ -627,7 +641,8 @@ function EntryForm({ names, settings, reasonsList, onAdd, accent, existingEntrie
     );
 
   const doAdd = (f) => {
-    onAdd({ ...f, id: uid(), hours: Number(f.hours) });
+    const { filled, ...entry } = f; // Only whether the question was answered "yes"; the name is what is saved.
+    onAdd({ ...entry, substitute: filled ? f.substitute : "", id: uid(), hours: Number(f.hours) });
     // Keep the name and date: several rows for the same person and day are usually entered together.
     setForm({ ...empty, name: f.name, date: f.date });
     setError("");
@@ -651,6 +666,14 @@ function EntryForm({ names, settings, reasonsList, onAdd, accent, existingEntrie
     }
     if (!(Number(form.hours) > 0) || Number(form.hours) > 24) {
       setError("כמות השעות צריכה להיות מספר בין 1 ל-24");
+      return;
+    }
+    if (form.filled && !form.substitute) {
+      setError("סומן שהיה מילוי מקום, יש לבחור מי מילא מקום");
+      return;
+    }
+    if (form.filled && form.substitute === form.name) {
+      setError("מי שנעדר לא יכול למלא מקום לעצמו, יש לבחור שם אחר");
       return;
     }
     setError("");
@@ -731,6 +754,17 @@ function EntryForm({ names, settings, reasonsList, onAdd, accent, existingEntrie
         <Field label="הערה חופשית">
           <input value={form.comment} onChange={set("comment")} placeholder="אופציונלי" />
         </Field>
+        <Field label="האם היה מילוי מקום?">
+          <select value={form.filled} onChange={(e) => { const filled = e.target.value; setForm((f) => ({ ...f, filled, substitute: filled ? f.substitute : "" })); }}>
+            <option value="">לא</option>
+            <option value="yes">כן</option>
+          </select>
+        </Field>
+        {form.filled && (
+          <Field label="מי מילא מקום?">
+            <NamePicker value={form.substitute} onChange={(substitute) => setForm((f) => ({ ...f, substitute }))} options={substitutes.names} meta={substitutes.kinds} label="מי מילא מקום?" />
+          </Field>
+        )}
       </div>
       {error && <p className="thc-error">{error}</p>}
       <button className="thc-primary-btn" onClick={submit}>
@@ -769,7 +803,7 @@ function EntryTable({ entries, onDelete, onUpdate, onDeleteMany, canEdit, export
       .filter((e) => {
         const q = searchKey(search);
         if (!q) return true;
-        return searchKey([e.subject, e.reason, e.comment, e.grade, e.parallel, e.name].join(" ")).includes(q);
+        return searchKey([e.subject, e.reason, e.comment, e.substitute, e.grade, e.parallel, e.name].join(" ")).includes(q);
       })
       .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   }, [entries, filterName, filterMonth, filterDay, filterGrade, filterReason, search]);
@@ -792,7 +826,8 @@ function EntryTable({ entries, onDelete, onUpdate, onDeleteMany, canEdit, export
   const cancelEdit = () => { setEditingId(null); setEditDraft(null); };
   const saveEdit = () => {
     if (!editDraft.name || !editDraft.subject || !editDraft.date || !(Number(editDraft.hours) > 0)) return;
-    onUpdate(editingId, { ...editDraft, hours: Number(editDraft.hours) });
+    const substitute = editDraft.substitute && editDraft.substitute !== editDraft.name ? editDraft.substitute : "";
+    onUpdate(editingId, { ...editDraft, substitute, hours: Number(editDraft.hours) });
     setEditingId(null);
     setEditDraft(null);
   };
@@ -818,7 +853,7 @@ function EntryTable({ entries, onDelete, onUpdate, onDeleteMany, canEdit, export
           <option value="">כל הסיבות</option>
           {reasons.map((r) => <option key={r} value={r}>{r || "לא צוינה"}</option>)}
         </select>
-        <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="חיפוש במקצוע, סיבה, הערה…" aria-label="חיפוש חופשי" />
+        <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="חיפוש במקצוע, סיבה, הערה, מילוי מקום…" aria-label="חיפוש חופשי" />
         {anyFilter && (
           <button className="thc-ghost-btn" onClick={() => { setFilterName(""); setFilterMonth(""); setFilterDay(""); setFilterGrade(""); setFilterReason(""); setSearch(""); }}>
             <X size={14} /> ניקוי סינון
@@ -861,7 +896,7 @@ function EntryTable({ entries, onDelete, onUpdate, onDeleteMany, canEdit, export
             <thead>
               <tr>
                 <th>שם</th><th>מקצוע</th><th>שכבה</th><th>מספר כיתה</th><th>תאריך</th>
-                <th>יום</th><th>חודש</th><th>שעות</th><th>סיבה</th><th>הערה</th>
+                <th>יום</th><th>חודש</th><th>שעות</th><th>סיבה</th><th>הערה</th><th>מילוי מקום</th>
                 {canEdit && <th></th>}
               </tr>
             </thead>
@@ -905,6 +940,20 @@ function EntryTable({ entries, onDelete, onUpdate, onDeleteMany, canEdit, export
                       </td>
                       <td><input value={editDraft.comment} onChange={setDraftField("comment")} style={{ minWidth: 120 }} /></td>
                       <td>
+                        <select value={editDraft.substitute || ""} onChange={setDraftField("substitute")} aria-label="מילוי מקום">
+                          <option value="">לא היה</option>
+                          {editDraft.substitute && !settings.teacherNames.includes(editDraft.substitute) && !settings.instructorNames.includes(editDraft.substitute) && (
+                            <option value={editDraft.substitute}>{editDraft.substitute}</option>
+                          )}
+                          <optgroup label="מורים">
+                            {settings.teacherNames.filter((n) => n !== editDraft.name).map((n) => <option key={n} value={n}>{n}</option>)}
+                          </optgroup>
+                          <optgroup label="מדריכים">
+                            {settings.instructorNames.filter((n) => n !== editDraft.name && !settings.teacherNames.includes(n)).map((n) => <option key={n} value={n}>{n}</option>)}
+                          </optgroup>
+                        </select>
+                      </td>
+                      <td>
                         <div style={{ display: "flex", gap: 4 }}>
                           <button className="thc-icon-btn thc-icon-save" onClick={saveEdit} aria-label="שמור"><Check size={15} /></button>
                           <button className="thc-icon-btn" onClick={cancelEdit} aria-label="בטל"><X size={15} /></button>
@@ -925,6 +974,7 @@ function EntryTable({ entries, onDelete, onUpdate, onDeleteMany, canEdit, export
                     <td className="thc-num">{e.hours}</td>
                     <td>{e.reason}</td>
                     <td className="thc-comment">{e.comment}</td>
+                    <td className="thc-substitute">{e.substitute}</td>
                     {canEdit && (
                       <td>
                         <div style={{ display: "flex", gap: 4 }}>
@@ -1186,9 +1236,10 @@ const SETTINGS_LISTS = [
 const SETTINGS_GROUPS = [...new Set(SETTINGS_LISTS.map((l) => l.group))];
 const THRESHOLD_ID = "alertThreshold";
 const TEAMS_ID = "teams";
+const NOTES_ID = "substituteNotes";
 
 /** One list at a time, chosen from a side menu; the search covers every list. */
-function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instructorEntries }) {
+function SettingsTab({ settings, onChange, onRenamePerson, onMarkSubstitutes, teacherEntries, instructorEntries }) {
   const [activeId, setActiveId] = useState(SETTINGS_LISTS[0].id);
   const [query, setQuery] = useState("");
   const upd = (key) => (val) => onChange({ ...settings, [key]: val });
@@ -1199,6 +1250,7 @@ function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instr
     [t.name, ...t.teachers, ...t.instructors].some((n) => searchKey(n).includes(k))
   )).length;
   const active = SETTINGS_LISTS.find((l) => l.id === activeId);
+  const noteRows = useMemo(() => findSubstituteNotes(teacherEntries, instructorEntries, settings), [teacherEntries, instructorEntries, settings]);
   const entriesOf = (kind) => (kind === "teachers" ? teacherEntries : instructorEntries);
 
   const search = (value) => {
@@ -1240,6 +1292,7 @@ function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instr
         ))}
         <p className="thc-settings-group">כללי</p>
         {menuItem(THRESHOLD_ID, "סף התראה", null, key !== "")}
+        {(noteRows.length > 0 || activeId === NOTES_ID) && menuItem(NOTES_ID, 'המרת הערות מ"מ', noteRows.length, key !== "")}
       </nav>
 
       <section className="thc-settings-panel">
@@ -1269,6 +1322,15 @@ function SettingsTab({ settings, onChange, onRenamePerson, teacherEntries, instr
             </header>
             <p className="thc-settings-hint">בוחרים צוות ולוחצים על שם מהרשימה כדי לצרף. מי ששייך גם לצוות נוסף מתווסף אליו בסימן + שליד שמו.</p>
             <TeamsEditor settings={settings} query={query} onChange={upd("teams")} makeId={uid} />
+          </>
+        ) : activeId === NOTES_ID ? (
+          <>
+            <header className="thc-settings-head">
+              <h3>המרת הערות מ"מ</h3>
+              <span>{noteRows.length === 1 ? "הערה אחת" : `${noteRows.length} הערות`}</span>
+            </header>
+            <p className="thc-settings-hint">רשומות שבהערה שלהן כתוב מ"מ או מילוי מקום. בדקו את השם בכל שורה ולחצו על המרה. ההערות עצמן לא נמחקות.</p>
+            <SubstituteNotes rows={noteRows} settings={settings} onApply={onMarkSubstitutes} />
           </>
         ) : (
           <>
@@ -1434,6 +1496,20 @@ export default function App() {
     write(() => entryOps(kind, { update: [{ ...updated, id }] }));
   }, [write]); // eslint-disable-line
 
+  /** items: { kind, id, substitute }[]. Only that field changes in each record. */
+  const markSubstitutes = useCallback(async (items) => {
+    let ok = true;
+    for (const kind of ["teachers", "instructors"]) {
+      const update = items.filter((it) => it.kind === kind).map(({ id, substitute }) => ({ id, substitute }));
+      if (!update.length) continue;
+      const res = await write(() => entryOps(kind, { update }));
+      if (!res) { ok = false; continue; }
+      const byId = new Map(update.map((u) => [u.id, u.substitute]));
+      setterFor(kind)((prev) => prev.map((e) => (byId.has(e.id) ? { ...e, substitute: byId.get(e.id) } : e)));
+    }
+    return ok;
+  }, [write]); // eslint-disable-line
+
   const removeEntries = useCallback((kind, ids) => {
     const idSet = new Set(ids);
     const list = kind === "teachers" ? teacherEntries : instructorEntries;
@@ -1560,6 +1636,7 @@ export default function App() {
 
   return (
     <div className="thc-root" dir="rtl">
+      <Intro />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700;900&family=Assistant:wght@400;500;600;700&family=Roboto+Mono:wght@500;700&display=swap');
 
@@ -2225,6 +2302,7 @@ export default function App() {
                 settings={settings}
                 onChange={updateSettings}
                 onRenamePerson={handleRenamePerson}
+                onMarkSubstitutes={markSubstitutes}
                 teacherEntries={teacherEntries}
                 instructorEntries={instructorEntries}
               />

@@ -510,3 +510,45 @@ html, body { margin: 0; background: #EEF2F7; }
   .thc-backup-mode small { margin-inline-start: auto; }
   .thc-dialog-dates { grid-template-columns: 1fr; }
 }
+
+/* Intro: the animated logo over a blurred view of the system */
+.thc-intro {
+  position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; cursor: pointer;
+  background: rgba(255, 255, 255, 0.62);
+  transition: opacity 0.7s ease;
+}
+/* The system behind the logo: blurred while the intro plays, sharp again as it fades. */
+.thc-root > :not(.thc-intro) { transition: filter 0.7s ease; }
+.thc-intro-on .thc-root > :not(.thc-intro) { filter: blur(12px); }
+.thc-intro.is-leaving { opacity: 0; pointer-events: none; }
+.thc-intro-logo {
+  width: min(62vmin, 460px); aspect-ratio: 1; display: block; opacity: 0;
+  transition: opacity 0.5s ease-out, transform 0.7s ease;
+}
+.thc-intro-logo.is-ready { opacity: 1; }
+.thc-intro.is-leaving .thc-intro-logo { transform: scale(0.92); }
+@media (prefers-reduced-motion: reduce) {
+  .thc-intro, .thc-intro-logo { transition: opacity 0.2s; }
+  .thc-intro.is-leaving .thc-intro-logo { transform: none; }
+}
+
+.thc-substitute { font-weight: 600; color: #2C6B2C; white-space: nowrap; }
+/* The substitute picker sits in the left column on phones: its list opens towards the middle of the screen. */
+@media (max-width: 640px) {
+  .thc-root .thc-form-grid > .thc-field:last-child .thc-picker-list { right: auto; }
+}
+@media (min-width: 761px) {
+  .thc-root .thc-overview > .thc-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Settings: turning old notes into the substitute field */
+.thc-notes-wrap { max-height: 520px; overflow: auto; margin-top: 12px; }
+.thc-notes-wrap select { max-width: 170px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font: inherit; font-size: 13.5px; }
+.thc-note-state { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; background: #EEF2F7; color: #57678A; }
+.thc-note-state.is-sure { background: #E6F4E6; color: #2C6B2C; }
+.thc-note-state.is-check { background: #FDF0E3; color: #8A4A10; }
+.thc-notes-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 16px; }
+
+/* Chart legend: the colour square sits a step away from its label, on the right of it. */
+.thc-root .recharts-legend-item .recharts-surface { margin: 0 0 0 5px !important; }
+.thc-root .recharts-legend-item { margin: 0 8px !important; }

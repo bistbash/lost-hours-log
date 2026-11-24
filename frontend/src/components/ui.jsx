@@ -167,5 +167,6 @@ export function Kpi({ label, value, sub, danger }) {
 }
 
 export const tooltipStyle = { fontFamily: "Assistant", direction: "rtl", borderRadius: 8, border: "1px solid #D8DDD6" };
-export const axisTick = { fontFamily: "Assistant", fontSize: 12.5, fontWeight: 600, fill: "#3A4750" };
-export const numTick = { fontFamily: "Roboto Mono", fontSize: 11, fill: "#55605C" };
+export const axisTick = { fontFamily: "Assistant", fontSize: 11.5, fontWeight: 600, fill: "#3A4750" };
+export const legendStyle = { fontFamily: "Assistant", fontSize: 12, fontWeight: 600 };
+export const numTick = { fontFamily: "Roboto Mono", fontSize: 10.5, fill: "#55605C" };

@@ -5,7 +5,7 @@
  */
 import {
   DAY_COLORS, DAY_NAMES, MONTH_COLORS, MONTH_NAMES, byClass, byWeekday, fmt, groupHours, hoursOf, monthKey,
-  monthKeyLabel, monthsSpan, people, sumHours, weekdayIndex,
+  filledHours, monthKeyLabel, monthsSpan, people, sumHours, weekdayIndex,
 } from "./stats.js";
 
 const SCHOOL = "טכני באר שבע";
@@ -35,7 +35,7 @@ const POPULATIONS = {
 const RECORD_COLUMNS = [
   { header: "שם", width: 24 }, { header: "מקצוע", width: 18 }, { header: "שכבה", width: 10 }, { header: "מספר כיתה", width: 14 },
   { header: "תאריך", width: 13 }, { header: "יום", width: 10 }, { header: "חודש", width: 11 }, { header: "שעות", width: 10 },
-  { header: "סיבה", width: 24 }, { header: "הערה", width: 34 },
+  { header: "סיבה", width: 24 }, { header: "הערה", width: 34 }, { header: "מילוי מקום", width: 22 },
 ];
 const RECORDS_HEADER_ROW = 5; // The import panel looks for the column titles in the first five rows.
 
@@ -266,8 +266,8 @@ function addRecords(wb, pop, list, ctx) {
   const last = RECORDS_HEADER_ROW + list.length;
   const hoursCol = "H";
   ws.getRow(1).height = 30;
-  put(ws, 1, 1, 10, `רשומות - ${pop.plural}`, { font: font(17, theme.accent, true) });
-  put(ws, 2, 1, 10, `${SCHOOL} · ${ctx.periodText} · הופק ב-${ctx.generatedText}`, { font: font(9.5, SOFT) });
+  put(ws, 1, 1, RECORD_COLUMNS.length, `רשומות - ${pop.plural}`, { font: font(17, theme.accent, true) });
+  put(ws, 2, 1, RECORD_COLUMNS.length, `${SCHOOL} · ${ctx.periodText} · הופק ב-${ctx.generatedText}`, { font: font(9.5, SOFT) });
 
   // Live totals: they follow the filters the reader applies to the table.
   ws.getRow(3).height = 22;
@@ -276,7 +276,7 @@ function addRecords(wb, pop, list, ctx) {
   put(ws, 3, 2, 2, list.length ? { formula: `SUBTOTAL(103,A${RECORDS_HEADER_ROW + 1}:A${last})`, result: list.length } : 0, { ...strip, font: font(12, theme.accent, true) });
   put(ws, 3, 3, 5, 'סה"כ שעות מוצגות', { ...strip, font: font(10, SOFT, true) });
   put(ws, 3, 6, 6, list.length ? { formula: `SUBTOTAL(109,${hoursCol}${RECORDS_HEADER_ROW + 1}:${hoursCol}${last})`, result: round1(sumHours(list)) } : 0, { ...strip, font: font(12, theme.accent, true) });
-  put(ws, 3, 7, 10, "", strip);
+  put(ws, 3, 7, RECORD_COLUMNS.length, "", strip);
 
   ws.getRow(4).height = 6;
   headerCells(ws, RECORDS_HEADER_ROW, theme, RECORD_COLUMNS.map((c, i) => ({ c1: i + 1, header: c.header })));
@@ -304,11 +304,12 @@ function addRecords(wb, pop, list, ctx) {
     put(ws, r, 8, 8, hoursOf(e), { ...center, font: font(10.5, theme.accent, true) });
     put(ws, r, 9, 9, e.reason ?? "", { ...base, font: font(10) });
     put(ws, r, 10, 10, e.comment ?? "", { ...base, font: font(9.5, SOFT), wrap: true });
+    put(ws, r, 11, 11, e.substitute ?? "", { ...base, font: font(10, OK, true) });
   });
 
   ws.views = [{ rightToLeft: true, showGridLines: false, state: "frozen", ySplit: RECORDS_HEADER_ROW }];
   ws.pageSetup.printTitlesRow = `${RECORDS_HEADER_ROW}:${RECORDS_HEADER_ROW}`;
-  if (list.length) ws.autoFilter = { from: { row: RECORDS_HEADER_ROW, column: 1 }, to: { row: last, column: 10 } };
+  if (list.length) ws.autoFilter = { from: { row: RECORDS_HEADER_ROW, column: 1 }, to: { row: last, column: RECORD_COLUMNS.length } };
 }
 
 function addSummary(wb, teachers, instructors, ctx) {
@@ -346,6 +347,7 @@ function addSummary(wb, teachers, instructors, ctx) {
     ["רשומות", teachers.length, instructors.length, all.length],
     ["ממוצע שעות לאיש צוות", average(tHours, tStaff.length), average(iHours, iStaff.length), average(total, staffCount)],
     [`מעל סף ${ctx.threshold} שעות`, overOf(tStaff), overOf(iStaff), over],
+    ["שעות שכוסו במילוי מקום", round1(filledHours(teachers)), round1(filledHours(instructors)), round1(filledHours(all))],
     ["סיבה מובילה", topReason(teachers), topReason(instructors), topReason(all)],
   ];
   rows.forEach((values, i) => {

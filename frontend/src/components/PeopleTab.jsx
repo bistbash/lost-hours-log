@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AlertTriangle, Download, Search, X } from "lucide-react";
-import { BarList, Kpi, RangeBar, axisTick, numTick, tooltipStyle } from "./ui.jsx";
+import { BarList, Kpi, RangeBar, axisTick, legendStyle, numTick, tooltipStyle } from "./ui.jsx";
 import {
   DAY_NAMES, byClass, byWeekday, fmt, groupHours, inRange, matchNames, monthKey, monthKeyLabel, monthsSpan, people, pct, searchKey, sumHours,
 } from "../lib/stats.js";
@@ -10,9 +10,9 @@ const NAVY = "#1B2A4A";
 const AVG_COLOR = "#E8821E";
 
 function exportPersonCSV(name, entries) {
-  const headers = ["שם", "מקצוע", "שכבה", "מספר כיתה", "תאריך", "יום", "שעות", "סיבה", "הערה"];
+  const headers = ["שם", "מקצוע", "שכבה", "מספר כיתה", "תאריך", "יום", "שעות", "סיבה", "הערה", "מילוי מקום"];
   const esc = (v) => `"${(v ?? "").toString().replace(/"/g, '""')}"`;
-  const rows = entries.map((e) => [e.name, e.subject, e.grade, e.parallel, e.date, DAY_NAMES[new Date(`${e.date}T00:00:00`).getDay()] || "", e.hours, e.reason, e.comment].map(esc).join(","));
+  const rows = entries.map((e) => [e.name, e.subject, e.grade, e.parallel, e.date, DAY_NAMES[new Date(`${e.date}T00:00:00`).getDay()] || "", e.hours, e.reason, e.comment, e.substitute].map(esc).join(","));
   const blob = new Blob([`﻿${headers.join(",")}\n${rows.join("\n")}`], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -211,7 +211,7 @@ function Profile({ name, all, scoped, ranked, totalScoped, alertThreshold, kindL
             <XAxis dataKey="month" tick={axisTick} tickLine={false} axisLine={{ stroke: "#D8DDD6" }} />
             <YAxis tick={numTick} tickLine={false} axisLine={false} allowDecimals={false} />
             <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(27,42,74,0.06)" }} formatter={(v, n) => [`${fmt(v)} שעות`, n]} />
-            <Legend wrapperStyle={{ fontFamily: "Assistant", fontWeight: 600 }} />
+            <Legend iconSize={10} wrapperStyle={legendStyle} />
             <Bar isAnimationActive={false} dataKey="mine" name={name} fill={NAVY} radius={[4, 4, 0, 0]} maxBarSize={44} />
             <Line isAnimationActive={false} dataKey="avg" name={`ממוצע ${kindLabel} באותו חודש`} stroke={AVG_COLOR} strokeWidth={2} strokeDasharray="5 4" dot={{ r: 4, fill: AVG_COLOR, stroke: "#fff", strokeWidth: 2 }} />
           </ComposedChart>
@@ -231,7 +231,7 @@ function Profile({ name, all, scoped, ranked, totalScoped, alertThreshold, kindL
         <h3>כל הרשומות ({mine.length})</h3>
         <div className="thc-table-wrap thc-table-scroll">
           <table className="thc-table">
-            <thead><tr><th>תאריך</th><th>יום</th><th>מקצוע</th><th>כיתה</th><th>שעות</th><th>סיבה</th><th>הערה</th></tr></thead>
+            <thead><tr><th>תאריך</th><th>יום</th><th>מקצוע</th><th>כיתה</th><th>שעות</th><th>סיבה</th><th>הערה</th><th>מילוי מקום</th></tr></thead>
             <tbody>
               {mine.map((e) => (
                 <tr key={e.id}>
@@ -242,6 +242,7 @@ function Profile({ name, all, scoped, ranked, totalScoped, alertThreshold, kindL
                   <td className="thc-num">{fmt(Number(e.hours))}</td>
                   <td>{e.reason}</td>
                   <td className="thc-comment">{e.comment}</td>
+                  <td className="thc-substitute">{e.substitute}</td>
                 </tr>
               ))}
             </tbody>
