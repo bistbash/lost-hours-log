@@ -5,7 +5,7 @@
  */
 import {
   DAY_COLORS, DAY_NAMES, MONTH_COLORS, MONTH_NAMES, byClass, byWeekday, fmt, groupHours, hoursOf, monthKey,
-  filledHours, monthKeyLabel, monthsSpan, people, sumHours, weekdayIndex,
+  filledHours, monthKeyLabel, monthsSpan, pct, people, substitutes, sumHours, weekdayIndex,
 } from "./stats.js";
 
 const SCHOOL = "טכני באר שבע";
@@ -25,6 +25,7 @@ const THEMES = {
   summary: { head: NAVY, accent: NAVY, tint: "EEF2F7", bar: "9DB0CC" },
   teachers: { head: "2E6DA4", accent: "245A8A", tint: "E8F1F8", bar: "9CC3E4" },
   instructors: { head: "B85F10", accent: "A85510", tint: "FDF0E3", bar: "F5BE8A" },
+  fills: { head: "2C6B2C", accent: "2C6B2C", tint: "E6F4E6", bar: "A9D3A9" },
 };
 
 const POPULATIONS = {
@@ -312,6 +313,69 @@ function addRecords(wb, pop, list, ctx) {
   if (list.length) ws.autoFilter = { from: { row: RECORDS_HEADER_ROW, column: 1 }, to: { row: last, column: RECORD_COLUMNS.length } };
 }
 
+const FILLS_SHEET = "דוח מילוי מקום";
+
+/** Who filled in the most, and every time someone filled in. */
+function addFills(wb, teachers, instructors, ctx) {
+  const theme = THEMES.fills;
+  const ws = newSheet(wb, FILLS_SHEET, theme, REPORT_WIDTHS);
+  const all = [...teachers, ...instructors];
+  const list = all.filter((e) => e.substitute).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const ranking = substitutes(list);
+  const hours = sumHours(list);
+  let row = reportHeader(ws, ctx, theme, "דוח מילוי מקום");
+  if (!list.length) {
+    put(ws, row, 2, 9, "לא נרשם מילוי מקום בתקופה זו.", { font: font(12, SOFT) });
+    return;
+  }
+  row = kpiRow(ws, row, theme, [
+    { value: round1(hours), label: "שעות שכוסו" },
+    { value: pct(hours, sumHours(all)), label: "מהשעות שאבדו" },
+    { value: ranking.length, label: "ממלאי מקום" },
+    { value: list.length, label: "פעמים" },
+  ]);
+
+  sectionTitle(ws, row, 2, 9, "מי נרתם למילוי מקום", theme);
+  headerCells(ws, row + 1, theme, [
+    { c1: 2, header: "#" }, { c1: 3, header: "שם", align: "right" }, { c1: 4, header: "שעות" }, { c1: 5, header: "חלק מהמילויים" },
+    { c1: 6, header: "פעמים" }, { c1: 7, header: "תפקיד", align: "right" }, { c1: 8, header: "אחרונה" }, { c1: 9, header: "אנשים שהוחלפו" },
+  ]);
+  const first = row + 2;
+  ranking.forEach((p, i) => {
+    const r = first + i;
+    const base = { border: { bottom: hairline }, ...(i < 3 ? { fill: fill(theme.tint) } : i % 2 ? { fill: fill(ZEBRA) } : {}) };
+    put(ws, r, 2, 2, i + 1, { ...base, font: font(9.5, i < 3 ? theme.accent : SOFT, i < 3), align: "center" });
+    put(ws, r, 3, 3, p.name, { ...base, font: font(10, INK, true) });
+    put(ws, r, 4, 4, round1(p.hours), { ...base, font: font(10.5, theme.accent, true), align: "center" });
+    put(ws, r, 5, 5, hours > 0 ? p.hours / hours : 0, { ...base, font: font(9.5), align: "center", numFmt: "0.0%" });
+    put(ws, r, 6, 6, p.count, { ...base, font: font(10), align: "center" });
+    put(ws, r, 7, 7, ctx.roles[p.name] || "", { ...base, font: font(10) });
+    put(ws, r, 8, 8, dateCell(p.last), { ...base, font: font(9.5), align: "center", numFmt: "dd/mm/yy" });
+    put(ws, r, 9, 9, p.helped, { ...base, font: font(10), align: "center" });
+    ws.getRow(r).height = 19;
+  });
+  dataBars(ws, 5, first, first + ranking.length - 1, theme);
+  row = first + ranking.length + 1;
+
+  sectionTitle(ws, row, 2, 9, "כל מילויי המקום", theme);
+  headerCells(ws, row + 1, theme, [
+    { c1: 2, c2: 3, header: "מי מילא מקום", align: "right" }, { c1: 4, header: "שעות" }, { c1: 5, header: "מקצוע", align: "right" },
+    { c1: 6, header: "כיתה" }, { c1: 7, header: "במקום", align: "right" }, { c1: 8, header: "תאריך" }, { c1: 9, header: "סיבה", align: "right" },
+  ]);
+  list.forEach((e, i) => {
+    const r = row + 2 + i;
+    const base = { border: { bottom: hairline }, ...(i % 2 ? { fill: fill(ZEBRA) } : {}) };
+    put(ws, r, 2, 3, e.substitute, { ...base, font: font(10, INK, true) });
+    put(ws, r, 4, 4, hoursOf(e), { ...base, font: font(10.5, theme.accent, true), align: "center" });
+    put(ws, r, 5, 5, e.subject ?? "", { ...base, font: font(10) });
+    put(ws, r, 6, 6, [e.grade, e.parallel].filter(Boolean).join(" "), { ...base, font: font(10), align: "center" });
+    put(ws, r, 7, 7, e.name ?? "", { ...base, font: font(10) });
+    put(ws, r, 8, 8, dateCell(e.date), { ...base, font: font(9.5), align: "center", numFmt: "dd/mm/yy" });
+    put(ws, r, 9, 9, e.reason ?? "", { ...base, font: font(9.5) });
+    ws.getRow(r).height = 18;
+  });
+}
+
 function addSummary(wb, teachers, instructors, ctx) {
   const theme = THEMES.summary;
   const ws = newSheet(wb, "סיכום", theme, REPORT_WIDTHS);
@@ -376,6 +440,7 @@ function addSummary(wb, teachers, instructors, ctx) {
     [POPULATIONS.teachers.records, "כל הרשומות, עם סינון ומיון"],
     [POPULATIONS.instructors.report, "דירוג, סיבות, חודשים, מקצועות, כיתות וימים"],
     [POPULATIONS.instructors.records, "כל הרשומות, עם סינון ומיון"],
+    [FILLS_SHEET, "מי נרתם למילוי מקום, וכל מילויי המקום"],
   ];
   contents.forEach(([sheet, text], i) => {
     const r = row + 1 + i;
@@ -401,7 +466,7 @@ function periodText(entries) {
 }
 
 /** Builds the workbook and returns its bytes. `label` names an archive when exporting one; `period` names a chosen date range. */
-export async function buildBackupWorkbook({ teacherEntries, instructorEntries, alertThreshold, label = "", period = "", now = new Date(), logo = true }) {
+export async function buildBackupWorkbook({ teacherEntries, instructorEntries, alertThreshold, roles = {}, label = "", period = "", now = new Date(), logo = true }) {
   const { default: ExcelJS } = await import("exceljs");
   const wb = new ExcelJS.Workbook();
   wb.creator = "צוות תפעול הדרכה";
@@ -412,6 +477,7 @@ export async function buildBackupWorkbook({ teacherEntries, instructorEntries, a
     label,
     partial: Boolean(period),
     threshold: alertThreshold,
+    roles, // name -> "מורה" / "מדריך/ה"
     periodText: period ? `תקופה: ${period}` : periodText([...teacherEntries, ...instructorEntries]),
     generatedText: dateText(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`),
     logoId: logo ? await loadLogo(wb) : null,
@@ -421,6 +487,7 @@ export async function buildBackupWorkbook({ teacherEntries, instructorEntries, a
   addRecords(wb, POPULATIONS.teachers, teacherEntries, ctx);
   addPopulationReport(wb, POPULATIONS.instructors, instructorEntries, ctx);
   addRecords(wb, POPULATIONS.instructors, instructorEntries, ctx);
+  addFills(wb, teacherEntries, instructorEntries, ctx);
   return wb.xlsx.writeBuffer();
 }
 

@@ -3,7 +3,7 @@ import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, T
 import { AlertTriangle, Download, Search, X } from "lucide-react";
 import { BarList, Kpi, RangeBar, axisTick, legendStyle, numTick, tooltipStyle } from "./ui.jsx";
 import {
-  DAY_NAMES, byClass, byWeekday, fmt, groupHours, inRange, matchNames, monthKey, monthKeyLabel, monthsSpan, people, pct, searchKey, sumHours,
+  DAY_NAMES, byClass, byWeekday, fmt, groupHours, inRange, matchNames, monthKey, monthKeyLabel, monthsSpan, people, pct, searchKey, substitutes, sumHours,
 } from "../lib/stats.js";
 
 const NAVY = "#1B2A4A";
@@ -46,6 +46,11 @@ export default function PeopleTab({ teacherEntries, instructorEntries, settings,
   const scoped = useMemo(() => inRange(all, range.from, range.to), [all, range]);
   const ranked = useMemo(() => people(scoped), [scoped]);
   const totalScoped = sumHours(scoped);
+  // Filling in crosses the two lists: a teacher can fill in for an instructor and the other way round.
+  const fills = useMemo(
+    () => inRange([...teacherEntries, ...instructorEntries], range.from, range.to).filter((e) => e.substitute),
+    [teacherEntries, instructorEntries, range],
+  );
 
   // Everyone on the roster or with entries; people with no lost hours are listed too.
   const rows = useMemo(() => {
@@ -147,7 +152,7 @@ export default function PeopleTab({ teacherEntries, instructorEntries, settings,
 
         <section className="thc-people-profile">
           {selected ? (
-            <Profile name={selected} all={all} scoped={scoped} ranked={ranked} totalScoped={totalScoped} alertThreshold={alertThreshold} kindLabel={kind === "teachers" ? "המורים" : "המדריכים"} />
+            <Profile name={selected} all={all} scoped={scoped} fills={fills} ranked={ranked} totalScoped={totalScoped} alertThreshold={alertThreshold} kindLabel={kind === "teachers" ? "המורים" : "המדריכים"} />
           ) : (
             <div className="thc-card"><p className="thc-empty">בחרו איש צוות מהרשימה (אפשר להקליד שם, או לקפוץ לאות) כדי לראות את הכרטיס האישי.</p></div>
           )}
@@ -157,7 +162,19 @@ export default function PeopleTab({ teacherEntries, instructorEntries, settings,
   );
 }
 
-function Profile({ name, all, scoped, ranked, totalScoped, alertThreshold, kindLabel }) {
+function Profile({ name, all, scoped, fills, ranked, totalScoped, alertThreshold, kindLabel }) {
+  const myFills = useMemo(() => fills.filter((e) => e.substitute === name).sort((a, b) => (b.date || "").localeCompare(a.date || "")), [fills, name]);
+  const fillRanks = useMemo(() => substitutes(fills), [fills]);
+  const fillHours = sumHours(myFills);
+  const fillRank = fillRanks.findIndex((p) => p.name === name) + 1;
+  const fillKpi = (
+    <Kpi
+      label="שעות מילוי מקום"
+      value={fmt(fillHours)}
+      sub={myFills.length ? `${myFills.length === 1 ? "פעם אחת" : `${myFills.length} פעמים`} · מקום ${fillRank} מתוך ${fillRanks.length} ממלאי מקום` : "עדיין לא נרשם מילוי מקום"}
+    />
+  );
+  const fillCard = myFills.length > 0 && <FillsCard fills={myFills} hours={fillHours} />;
   const mine = useMemo(() => scoped.filter((e) => e.name === name).sort((a, b) => (b.date || "").localeCompare(a.date || "")), [scoped, name]);
   const hours = sumHours(mine);
   const rank = ranked.findIndex((p) => p.name === name) + 1;
@@ -177,10 +194,14 @@ function Profile({ name, all, scoped, ranked, totalScoped, alertThreshold, kindL
   if (!mine.length) {
     const ever = all.filter((e) => e.name === name).length;
     return (
-      <div className="thc-card">
-        <h3 className="thc-profile-name">{name}</h3>
-        <p className="thc-empty">{ever ? "אין היעדרויות בטווח שנבחר." : "לא נרשמו שעות שאבדו לאיש צוות זה."}</p>
-      </div>
+      <>
+        <div className="thc-card">
+          <h3 className="thc-profile-name">{name}</h3>
+          <p className="thc-empty">{ever ? "אין היעדרויות בטווח שנבחר." : "לא נרשמו שעות שאבדו לאיש צוות זה."}</p>
+        </div>
+        {myFills.length > 0 && <div className="thc-overview-grid thc-kpis">{fillKpi}</div>}
+        {fillCard}
+      </>
     );
   }
 
@@ -201,7 +222,10 @@ function Profile({ name, all, scoped, ranked, totalScoped, alertThreshold, kindL
         <Kpi label="רשומות" value={mine.length} sub={`ממוצע ${fmt(hours / mine.length)} שעות לרשומה`} />
         <Kpi label="לעומת הממוצע" value={avgPerPerson ? `×${(hours / avgPerPerson).toFixed(1)}` : "—"} sub={`ממוצע לאיש צוות: ${fmt(avgPerPerson)} שעות`} />
         <Kpi label="היעדרות אחרונה" value={mine[0].date.split("-").reverse().join("/")} sub={DAY_NAMES[new Date(`${mine[0].date}T00:00:00`).getDay()]} />
+        {fillKpi}
       </div>
+
+      {fillCard}
 
       <div className="thc-card">
         <h3>שעות שאבדו לפי חודש</h3>
@@ -250,5 +274,31 @@ function Profile({ name, all, scoped, ranked, totalScoped, alertThreshold, kindL
         </div>
       </div>
     </>
+  );
+}
+
+/** Every time this person filled in for someone. */
+function FillsCard({ fills, hours }) {
+  return (
+    <div className="thc-card">
+      <h3>מילוי מקום ({hours === 1 ? "שעה אחת" : `${fmt(hours)} שעות`})</h3>
+      <div className="thc-table-wrap thc-table-scroll">
+        <table className="thc-table">
+          <thead><tr><th>תאריך</th><th>יום</th><th>במקום</th><th>מקצוע</th><th>כיתה</th><th>שעות</th></tr></thead>
+          <tbody>
+            {fills.map((e) => (
+              <tr key={e.id}>
+                <td>{e.date.split("-").reverse().join("/")}</td>
+                <td>{DAY_NAMES[new Date(`${e.date}T00:00:00`).getDay()]}</td>
+                <td>{e.name}</td>
+                <td>{e.subject}</td>
+                <td>{[e.grade, e.parallel].filter(Boolean).join(" ")}</td>
+                <td className="thc-num thc-substitute">{fmt(Number(e.hours))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

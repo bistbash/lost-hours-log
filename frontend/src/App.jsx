@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { archiveOps, entryOps, fetchState, fetchVersion, patchSettings, renamePerson, saveLastExport } from "./lib/api.js";
-import { DAY_COLORS, MONTH_COLORS, fmt, inRange, people as peopleOf, searchKey } from "./lib/stats.js";
+import { DAY_COLORS, MONTH_COLORS, fmt, inRange, people as peopleOf, pct, searchKey, substitutes, sumHours } from "./lib/stats.js";
 import { downloadBackup } from "./lib/backupReport.js";
 import BackupDialog from "./components/BackupDialog.jsx";
 import Intro from "./components/Intro.jsx";
@@ -1022,18 +1022,77 @@ function exportSummaryCSV(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
-function SummaryTab({ teacherEntries, instructorEntries, alertThreshold, onPickPerson }) {
+function exportSubstitutesCSV(rows, kinds) {
+  const esc = (v) => `"${(v ?? "").toString().replace(/"/g, '""')}"`;
+  const headers = ["דירוג", "שם", "תפקיד", "שעות מילוי מקום", "פעמים", "אנשים שהוחלפו", "אחרונה"];
+  const body = rows.map((r, i) => [i + 1, r.name, kinds[r.name], r.hours, r.count, r.helped, r.last].map(esc).join(","));
+  const blob = new Blob([`\uFEFF${headers.join(",")}\n${body.join("\n")}`], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "ממלאי-מקום.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+const medal = (i) => (i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`);
+
+/** Who filled in the most, teachers and instructors together. */
+function SubstitutesRanking({ entries, settings, onPickPerson }) {
+  const [showAll, setShowAll] = useState(false);
+  const rows = useMemo(() => substitutes(entries), [entries]);
+  const { kinds } = useMemo(() => substituteOptions(settings), [settings]);
+  const total = sumHours(rows);
+  return (
+    <div className="thc-card">
+      <div className="thc-subject-header">
+        <h3>מי נרתם למילוי מקום</h3>
+        <div className="thc-ranking-actions">
+          {rows.length > 10 && <button className="thc-ghost-btn" onClick={() => setShowAll((s) => !s)}>{showAll ? "הצג רק 10 מובילים" : `הצג את כל ${rows.length}`}</button>}
+          {rows.length > 0 && <button className="thc-ghost-btn" onClick={() => exportSubstitutesCSV(rows, kinds)}><Download size={15} /> ייצוא ל-CSV</button>}
+        </div>
+      </div>
+      <p className="thc-muted">מורים ומדריכים יחד, בטווח התאריכים שנבחר למעלה. {rows.length > 0 && <>סה"כ כוסו <b>{total === 1 ? "שעה אחת" : `${fmt(total)} שעות`}</b>, {pct(total, sumHours(entries))} מהשעות שאבדו.</>}</p>
+      {rows.length === 0 ? (
+        <p className="thc-empty">לא נרשם מילוי מקום בטווח שנבחר.</p>
+      ) : (
+        <div className="thc-table-wrap">
+          <table className="thc-table thc-ranking">
+            <thead><tr><th>#</th><th>שם</th><th>תפקיד</th><th>שעות מילוי מקום</th><th>פעמים</th><th>אנשים שהוחלפו</th><th>חלק מהמילויים</th></tr></thead>
+            <tbody>
+              {(showAll ? rows : rows.slice(0, 10)).map((r, i) => (
+                <tr key={r.name} className={i < 3 ? "thc-top" : ""}>
+                  <td>{medal(i)}</td>
+                  <td><button type="button" className="thc-link" onClick={() => onPickPerson(r.name)}>{r.name}</button></td>
+                  <td>{kinds[r.name] || "—"}</td>
+                  <td className="thc-num"><b>{fmt(r.hours)}</b></td>
+                  <td className="thc-num">{r.count}</td>
+                  <td className="thc-num">{r.helped}</td>
+                  <td className="thc-num">{pct(r.hours, total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SummaryTab({ teacherEntries, instructorEntries, settings, onPickPerson }) {
+  const { alertThreshold } = settings;
   const [dataset, setDataset] = useState("teachers");
   const [range, setRange] = useState({ from: "", to: "" });
   const [showAll, setShowAll] = useState(false);
 
   const source = dataset === "teachers" ? teacherEntries : instructorEntries;
   const ranked = useMemo(() => peopleOf(inRange(source, range.from, range.to)), [source, range]);
+  const everyone = useMemo(() => inRange([...teacherEntries, ...instructorEntries], range.from, range.to), [teacherEntries, instructorEntries, range]);
 
   const visibleRanked = showAll ? ranked : ranked.slice(0, 10);
-  const medal = (i) => (i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`);
 
   return (
+    <>
     <div className="thc-card">
       <div className="thc-reports-toolbar">
         <div className="thc-seg">
@@ -1087,6 +1146,8 @@ function SummaryTab({ teacherEntries, instructorEntries, alertThreshold, onPickP
         </div>
       )}
     </div>
+    <SubstitutesRanking entries={everyone} settings={settings} onPickPerson={onPickPerson} />
+    </>
   );
 }
 
@@ -1567,7 +1628,7 @@ export default function App() {
   const runBackup = useCallback(async (report) => {
     setBackingUp(true);
     try {
-      await downloadBackup({ alertThreshold: settings.alertThreshold, ...report });
+      await downloadBackup({ alertThreshold: settings.alertThreshold, roles: substituteOptions(settings).kinds, ...report });
       return true;
     } catch (e) {
       console.error("backup failed", e);
@@ -1576,7 +1637,7 @@ export default function App() {
     } finally {
       setBackingUp(false);
     }
-  }, [settings.alertThreshold]);
+  }, [settings]);
 
   const openBackupDialog = useCallback(() => setBackupDialogOpen(true), []);
 
@@ -2282,7 +2343,7 @@ export default function App() {
               />
             )}
             {activeTab === "summary" && (
-              <SummaryTab teacherEntries={teacherEntries} instructorEntries={instructorEntries} alertThreshold={settings.alertThreshold} onPickPerson={pickPerson} />
+              <SummaryTab teacherEntries={teacherEntries} instructorEntries={instructorEntries} settings={settings} onPickPerson={pickPerson} />
             )}
             {activeTab === "holidays" && role === "coordinator" && (
               <HolidaysTab holidays={settings.holidays} onChange={(next) => updateSettings({ ...settings, holidays: next })} grades={settings.grades} />

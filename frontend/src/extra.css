@@ -552,3 +552,8 @@ html, body { margin: 0; background: #EEF2F7; }
 /* Chart legend: the colour square sits a step away from its label, on the right of it. */
 .thc-root .recharts-legend-item .recharts-surface { margin: 0 0 0 5px !important; }
 .thc-root .recharts-legend-item { margin: 0 8px !important; }
+
+.thc-ranking-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (min-width: 761px) {
+  .thc-root .thc-people-profile > .thc-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

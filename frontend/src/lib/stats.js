@@ -139,6 +139,23 @@ export function people(list) {
     .sort((a, b) => b.hours - a.hours || a.name.localeCompare(b.name, "he"));
 }
 
+/** Who filled in for others: [{ name, hours, count, last, helped }], most hours first. `helped` counts the people replaced. */
+export function substitutes(list) {
+  const map = new Map();
+  for (const e of list) {
+    if (!e.substitute) continue;
+    const p = map.get(e.substitute) || { name: e.substitute, hours: 0, count: 0, last: "", absent: new Set() };
+    p.hours += hoursOf(e);
+    p.count += 1;
+    if (e.date > p.last) p.last = e.date;
+    p.absent.add(e.name);
+    map.set(e.substitute, p);
+  }
+  return [...map.values()]
+    .map(({ absent, ...p }) => ({ ...p, helped: absent.size }))
+    .sort((a, b) => b.hours - a.hours || b.count - a.count || a.name.localeCompare(b.name, "he"));
+}
+
 /** A team's entries, each tagged with its kind. Teams hold { teachers: names[], instructors: names[] }. */
 export function teamEntries(team, teachers, instructors) {
   const pick = (list, names, kind) => {
