@@ -1065,7 +1065,7 @@ function SubstitutesRanking({ entries, settings, onPickPerson }) {
           {rows.length > 0 && <button className="thc-ghost-btn" onClick={() => exportSubstitutesCSV(rows, kinds)}><Download size={15} /> ייצוא ל-CSV</button>}
         </div>
       </div>
-      <p className="thc-muted">מורים ומדריכים יחד, בטווח התאריכים שנבחר למעלה. {rows.length > 0 && <>סה"כ נסתמו <b>{total === 1 ? "שעה אחת" : `${fmt(total)} שעות`}</b>, {pct(total, sumHours(entries))} מהשעות שאבדו.</>}</p>
+      <p className="thc-muted">מורים ומדריכים יחד, בטווח התאריכים שנבחר למעלה. {rows.length > 0 && <>סה"כ כוסו <b>{total === 1 ? "שעה אחת" : `${fmt(total)} שעות`}</b>, {pct(total, sumHours(entries))} מהשעות שאבדו.</>}</p>
       {rows.length === 0 ? (
         <p className="thc-empty">לא נרשם מילוי מקום בטווח שנבחר.</p>
       ) : (

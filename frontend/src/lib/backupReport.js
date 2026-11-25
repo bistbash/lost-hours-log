@@ -329,7 +329,7 @@ function addFills(wb, teachers, instructors, ctx) {
     return;
   }
   row = kpiRow(ws, row, theme, [
-    { value: round1(hours), label: "שעות שנסתמו" },
+    { value: round1(hours), label: "שעות שכוסו" },
     { value: pct(hours, sumHours(all)), label: "מהשעות שאבדו" },
     { value: ranking.length, label: "ממלאי מקום" },
     { value: list.length, label: "פעמים" },
@@ -411,7 +411,7 @@ function addSummary(wb, teachers, instructors, ctx) {
     ["רשומות", teachers.length, instructors.length, all.length],
     ["ממוצע שעות לאיש צוות", average(tHours, tStaff.length), average(iHours, iStaff.length), average(total, staffCount)],
     [`מעל סף ${ctx.threshold} שעות`, overOf(tStaff), overOf(iStaff), over],
-    ["שעות שנסתמו במילוי מקום", round1(filledHours(teachers)), round1(filledHours(instructors)), round1(filledHours(all))],
+    ["שעות שכוסו במילוי מקום", round1(filledHours(teachers)), round1(filledHours(instructors)), round1(filledHours(all))],
     ["סיבה מובילה", topReason(teachers), topReason(instructors), topReason(all)],
   ];
   rows.forEach((values, i) => {

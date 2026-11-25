@@ -580,14 +580,3 @@ html, body { margin: 0; background: #EEF2F7; }
 @media (max-width: 640px) { .thc-edit-panel { padding: 12px; } .thc-edit-panel .thc-field { flex-basis: 120px; } }
 /* Long notes and reasons wrap instead of pushing the last columns out of view. */
 .thc-root .thc-entries tbody .thc-comment, .thc-root .thc-entries tbody .thc-reason { white-space: normal; min-width: 110px; }
-
-/* Overview: how much of the lost hours a substitute covered */
-.thc-cover-bar { display: flex; gap: 2px; height: 8px; margin: 4px 0 6px; }
-.thc-cover-bar i { flex-basis: 0; min-width: 3px; }
-.thc-cover-bar i:first-child { border-radius: 0 4px 4px 0; }
-.thc-cover-bar i:last-child { border-radius: 4px 0 0 4px; }
-.thc-cover-bar i:only-child { border-radius: 4px; }
-@media (max-width: 640px) {
-  .thc-root .thc-overview-main .thc-subject-header { flex-wrap: wrap; gap: 0 10px; margin-bottom: 10px; }
-  .thc-root .thc-overview-main .thc-seg button { white-space: nowrap; }
-}

@@ -5,9 +5,6 @@ import { BarList, Kpi, axisTick, legendStyle, numTick, tooltipStyle } from "./ui
 import { SERIES } from "./ReportsTab.jsx";
 import { DAY_NAMES, byWeekday, filledHours, fmt, groupHours, monthKey, monthKeyLabel, monthsSpan, people, pct, sumHours } from "../lib/stats.js";
 
-/** Lost hours by whether a substitute closed the hole in the timetable. */
-const COVER = { covered: { label: "נסתמו", color: "#2FA184" }, open: { label: "לא נסתמו", color: "#B23A28" } };
-
 const ym = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
 /** Dashboard: this month vs. last month, the trend, who and why, and the backup reminder. */
@@ -17,7 +14,6 @@ export default function OverviewTab({ teacherEntries, instructorEntries, lastExp
     ...instructorEntries.map((e) => ({ ...e, kind: "instructors" })),
   ], [teacherEntries, instructorEntries]);
 
-  const [trend, setTrend] = useState("kind");
   const now = new Date();
   const thisMonth = ym(now);
   const lastMonth = ym(new Date(now.getFullYear(), now.getMonth() - 1, 1));
@@ -25,7 +21,7 @@ export default function OverviewTab({ teacherEntries, instructorEntries, lastExp
   const hoursLastMonth = sumHours(tagged.filter((e) => monthKey(e.date) === lastMonth));
   const total = sumHours(tagged);
   const filled = filledHours(tagged);
-  const open = total - filled;
+  const filledCount = tagged.filter((e) => e.substitute).length;
 
   const teachers = useMemo(() => people(teacherEntries), [teacherEntries]);
   const instructors = useMemo(() => people(instructorEntries), [instructorEntries]);
@@ -39,8 +35,6 @@ export default function OverviewTab({ teacherEntries, instructorEntries, lastExp
       month: monthKeyLabel(k),
       teachers: sumHours(inMonth.filter((e) => e.kind === "teachers")),
       instructors: sumHours(inMonth.filter((e) => e.kind === "instructors")),
-      covered: filledHours(inMonth),
-      open: sumHours(inMonth.filter((e) => !e.substitute)),
     };
   }), [tagged]);
 
@@ -83,31 +77,13 @@ export default function OverviewTab({ teacherEntries, instructorEntries, lastExp
         <Kpi label='סה"כ שעות שאבדו' value={fmt(total)} sub={`${tagged.length} רשומות`} />
         <Kpi label="אנשי צוות עם היעדרות" value={teachers.length + instructors.length} sub={`${teachers.length} מורים · ${instructors.length} מדריכים · ממוצע ${fmt(total / Math.max(teachers.length + instructors.length, 1))} שעות`} />
         <Kpi label={`מעל סף ${alertThreshold} שעות`} value={overThreshold} sub={overThreshold ? "מסומנים בדגל אדום" : "אף אחד עדיין"} danger={overThreshold > 0} />
-        <Kpi
-          label="שעות שנסתמו במילוי מקום"
-          value={fmt(filled)}
-          sub={filled === 0 ? "עדיין לא סומן מילוי מקום" : (
-            <>
-              <span className="thc-cover-bar" aria-hidden="true">
-                <i style={{ flexGrow: filled, background: COVER.covered.color }} />
-                {open > 0 && <i style={{ flexGrow: open, background: COVER.open.color }} />}
-              </span>
-              {open > 0 ? <>לא נסתמו: <b>{open === 1 ? "שעה אחת" : `${fmt(open)} שעות`}</b> ({pct(open, total)})</> : "כל השעות נסתמו"}
-            </>
-          )}
-        />
+        <Kpi label="שעות שכוסו במילוי מקום" value={fmt(filled)} sub={filledCount ? `${pct(filled, total)} מהשעות · ${filledCount === 1 ? "רשומה אחת" : `${filledCount} רשומות`}` : "עדיין לא סומן מילוי מקום"} />
         <Kpi label="הסיבה הנפוצה" value={<span className="thc-kpi-text">{reasons[0]?.name || "—"}</span>} sub={reasons[0] ? `${fmt(reasons[0].value)} שעות (${pct(reasons[0].value, total)})` : null} />
       </div>
 
       <div className="thc-overview-main">
         <div className="thc-card">
-          <div className="thc-subject-header">
-            <h3>מגמה חודשית</h3>
-            <div className="thc-seg thc-seg-sm" role="group" aria-label="חלוקת הגרף">
-              <button type="button" className={trend === "kind" ? "active" : ""} aria-pressed={trend === "kind"} onClick={() => setTrend("kind")}>מורים / מדריכים</button>
-              <button type="button" className={trend === "cover" ? "active" : ""} aria-pressed={trend === "cover"} onClick={() => setTrend("cover")}>נסתמו / לא נסתמו</button>
-            </div>
-          </div>
+          <h3>מגמה חודשית</h3>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={monthly} margin={{ top: 10, right: 6, left: -14, bottom: 0 }} barCategoryGap="28%">
               <CartesianGrid strokeDasharray="3 3" stroke="#E3E7EE" vertical={false} />
@@ -115,9 +91,8 @@ export default function OverviewTab({ teacherEntries, instructorEntries, lastExp
               <YAxis tick={numTick} tickLine={false} axisLine={false} allowDecimals={false} />
               <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "rgba(27,42,74,0.06)" }} formatter={(v, n) => [`${fmt(v)} שעות`, n]} />
               <Legend iconSize={10} wrapperStyle={legendStyle} />
-              {Object.entries(trend === "cover" ? COVER : SERIES).map(([key, { label, color }], i) => (
-                <Bar key={key} isAnimationActive={false} dataKey={key} name={label} stackId="a" fill={color} stroke="#fff" strokeWidth={1} radius={i ? [4, 4, 0, 0] : 0} />
-              ))}
+              <Bar isAnimationActive={false} dataKey="teachers" name={SERIES.teachers.label} stackId="a" fill={SERIES.teachers.color} stroke="#fff" strokeWidth={1} />
+              <Bar isAnimationActive={false} dataKey="instructors" name={SERIES.instructors.label} stackId="a" fill={SERIES.instructors.color} stroke="#fff" strokeWidth={1} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
