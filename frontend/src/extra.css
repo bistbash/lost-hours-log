@@ -21,8 +21,9 @@
 .thc-picker-icon { position: absolute; right: 10px; color: var(--ink-soft); pointer-events: none; }
 .thc-picker-clear {
   position: absolute; left: 8px; border: none; background: #EEF2F7; color: var(--ink-soft);
-  width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  width: 20px; height: 20px; padding: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
 }
+.thc-picker-clear svg { display: block; }
 .thc-picker-list {
   position: absolute; z-index: 30; top: calc(100% + 4px); right: 0; left: 0;
   max-height: 290px; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
@@ -557,3 +558,25 @@ html, body { margin: 0; background: #EEF2F7; }
 @media (min-width: 761px) {
   .thc-root .thc-people-profile > .thc-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* Entries table: the edit and delete buttons stay in view while the table scrolls sideways. */
+.thc-entries { container-type: inline-size; }
+.thc-root .thc-entries tbody tr { background: #fff; }
+.thc-root .thc-entries .thc-row-actions { position: sticky; left: 0; background: inherit; box-shadow: inset -1px 0 0 var(--line); }
+.thc-root .thc-entries thead .thc-row-actions { background: #fff; z-index: 2; }
+
+/* Editing a record: a form as wide as the visible part of the table, so it never needs sideways scrolling. */
+.thc-root .thc-table .thc-editing-row > td { padding: 0; white-space: normal; }
+.thc-edit-panel {
+  position: sticky; right: 0; box-sizing: border-box; width: 100cqw; padding: 14px 16px;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;
+  border-right: 4px solid var(--gold); scroll-margin: 90px 0;
+}
+.thc-root .thc-edit-panel:focus { outline: none; border-radius: 0; }
+.thc-edit-panel .thc-field { flex: 1 1 150px; min-width: 0; }
+.thc-edit-panel .thc-field select, .thc-edit-panel .thc-field input { width: 100%; box-sizing: border-box; background: #fff; border-color: var(--gold); }
+.thc-edit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-right: auto; }
+.thc-edit-missing { color: #A6432B; font-size: 13px; font-weight: 600; }
+@media (max-width: 640px) { .thc-edit-panel { padding: 12px; } .thc-edit-panel .thc-field { flex-basis: 120px; } }
+/* Long notes and reasons wrap instead of pushing the last columns out of view. */
+.thc-root .thc-entries tbody .thc-comment, .thc-root .thc-entries tbody .thc-reason { white-space: normal; min-width: 110px; }

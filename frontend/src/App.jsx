@@ -776,6 +776,70 @@ function EntryForm({ names, settings, reasonsList, onAdd, accent, existingEntrie
 
 const PAGE_SIZE = 50;
 
+const missingFields = (d) => [
+  !d.name && "שם", !d.subject && "מקצוע", !d.date && "תאריך", !(Number(d.hours) > 0) && "שעות",
+].filter(Boolean);
+
+/** The select's options; a value that was since removed from the settings stays selectable. */
+const optionList = (list, value) => (value && !list.includes(value) ? [value, ...list] : list).map((n) => <option key={n} value={n}>{n}</option>);
+
+/** Edits one record in place. Enter in a text field saves, Escape cancels. */
+function EntryEditor({ draft, setDraft, onSave, onCancel, settings, namesList, reasonsList }) {
+  const formRef = useRef(null);
+  useEffect(() => {
+    formRef.current?.focus({ preventScroll: true });
+    formRef.current?.scrollIntoView({ block: "nearest" });
+  }, []);
+  const set = (k) => (ev) => setDraft((d) => ({ ...d, [k]: ev.target.value }));
+  const missing = missingFields(draft);
+  const { teacherNames, instructorNames } = settings;
+  const known = teacherNames.includes(draft.substitute) || instructorNames.includes(draft.substitute);
+
+  return (
+    <form
+      ref={formRef}
+      className="thc-edit-panel"
+      tabIndex={-1}
+      noValidate
+      aria-label="עריכת רשומה"
+      onSubmit={(ev) => { ev.preventDefault(); onSave(); }}
+      onKeyDown={(ev) => { if (ev.key === "Escape") onCancel(); }}
+    >
+      <Field label="שם"><select value={draft.name} onChange={set("name")}>{optionList(namesList, draft.name)}</select></Field>
+      <Field label="מקצוע"><select value={draft.subject} onChange={set("subject")}>{optionList(settings.subjects, draft.subject)}</select></Field>
+      <Field label="שכבה">
+        <select value={draft.grade} onChange={set("grade")}><option value="">-</option>{optionList(settings.grades, draft.grade)}</select>
+      </Field>
+      <Field label="מספר כיתה">
+        <select value={draft.parallel} onChange={set("parallel")}><option value="">-</option>{optionList(settings.parallels, draft.parallel)}</select>
+      </Field>
+      <Field label={draft.date ? `תאריך (יום ${dayOfWeekHebrew(draft.date)})` : "תאריך"}><input type="date" value={draft.date} onChange={set("date")} /></Field>
+      <Field label="שעות"><input type="number" min="1" step="1" value={draft.hours} onChange={set("hours")} /></Field>
+      <Field label="סיבה">
+        <select value={draft.reason} onChange={set("reason")}><option value="">-</option>{optionList(reasonsList, draft.reason)}</select>
+      </Field>
+      <Field label="הערה"><input value={draft.comment} onChange={set("comment")} /></Field>
+      <Field label="מילוי מקום">
+        <select value={draft.substitute || ""} onChange={set("substitute")}>
+          <option value="">לא היה</option>
+          {draft.substitute && !known && <option value={draft.substitute}>{draft.substitute}</option>}
+          <optgroup label="מורים">
+            {teacherNames.filter((n) => n !== draft.name).map((n) => <option key={n} value={n}>{n}</option>)}
+          </optgroup>
+          <optgroup label="מדריכים">
+            {instructorNames.filter((n) => n !== draft.name && !teacherNames.includes(n)).map((n) => <option key={n} value={n}>{n}</option>)}
+          </optgroup>
+        </select>
+      </Field>
+      <div className="thc-edit-actions">
+        {missing.length > 0 && <span className="thc-edit-missing" role="status">חסר: {missing.join(", ")}</span>}
+        <button type="submit" className="thc-primary-btn thc-btn-sm" disabled={missing.length > 0}><Check size={16} /> שמירה</button>
+        <button type="button" className="thc-ghost-btn" onClick={onCancel}><X size={15} /> ביטול</button>
+      </div>
+    </form>
+  );
+}
+
 function EntryTable({ entries, onDelete, onUpdate, onDeleteMany, canEdit, exportName, settings, namesList, reasonsList, onPickPerson }) {
   const [filterName, setFilterName] = useState("");
   const [filterMonth, setFilterMonth] = useState("");
@@ -825,13 +889,12 @@ function EntryTable({ entries, onDelete, onUpdate, onDeleteMany, canEdit, export
   const startEdit = (e) => { setEditingId(e.id); setEditDraft({ ...e }); };
   const cancelEdit = () => { setEditingId(null); setEditDraft(null); };
   const saveEdit = () => {
-    if (!editDraft.name || !editDraft.subject || !editDraft.date || !(Number(editDraft.hours) > 0)) return;
+    if (missingFields(editDraft).length) return;
     const substitute = editDraft.substitute && editDraft.substitute !== editDraft.name ? editDraft.substitute : "";
     onUpdate(editingId, { ...editDraft, substitute, hours: Number(editDraft.hours) });
     setEditingId(null);
     setEditDraft(null);
   };
-  const setDraftField = (k) => (ev) => setEditDraft((d) => ({ ...d, [k]: ev.target.value }));
 
   return (
     <div className="thc-card">
@@ -891,13 +954,13 @@ function EntryTable({ entries, onDelete, onUpdate, onDeleteMany, canEdit, export
       {filtered.length === 0 ? (
         <p className="thc-empty">אין רשומות להצגה — נסה לשנות את הסינון או להוסיף רשומה חדשה.</p>
       ) : (
-        <div className="thc-table-wrap">
+        <div className="thc-table-wrap thc-entries">
           <table className="thc-table">
             <thead>
               <tr>
                 <th>שם</th><th>מקצוע</th><th>שכבה</th><th>מספר כיתה</th><th>תאריך</th>
                 <th>יום</th><th>חודש</th><th>שעות</th><th>סיבה</th><th>הערה</th><th>מילוי מקום</th>
-                {canEdit && <th></th>}
+                {canEdit && <th className="thc-row-actions"></th>}
               </tr>
             </thead>
             <tbody>
@@ -906,58 +969,8 @@ function EntryTable({ entries, onDelete, onUpdate, onDeleteMany, canEdit, export
                 if (isEditing) {
                   return (
                     <tr key={e.id} className="thc-editing-row">
-                      <td>
-                        <select value={editDraft.name} onChange={setDraftField("name")}>
-                          {namesList.map((n) => <option key={n} value={n}>{n}</option>)}
-                        </select>
-                      </td>
-                      <td>
-                        <select value={editDraft.subject} onChange={setDraftField("subject")}>
-                          {settings.subjects.map((n) => <option key={n} value={n}>{n}</option>)}
-                        </select>
-                      </td>
-                      <td>
-                        <select value={editDraft.grade} onChange={setDraftField("grade")}>
-                          <option value="">-</option>
-                          {settings.grades.map((n) => <option key={n} value={n}>{n}</option>)}
-                        </select>
-                      </td>
-                      <td>
-                        <select value={editDraft.parallel} onChange={setDraftField("parallel")}>
-                          <option value="">-</option>
-                          {settings.parallels.map((n) => <option key={n} value={n}>{n}</option>)}
-                        </select>
-                      </td>
-                      <td><input type="date" value={editDraft.date} onChange={setDraftField("date")} /></td>
-                      <td><span className="thc-badge" style={dayBadgeStyle(dayOfWeekHebrew(editDraft.date))}>{dayOfWeekHebrew(editDraft.date)}</span></td>
-                      <td><span className="thc-badge" style={monthBadgeStyle(editDraft.date)}>{monthHebrew(editDraft.date)}</span></td>
-                      <td><input type="number" min="1" step="1" value={editDraft.hours} onChange={setDraftField("hours")} style={{ width: 60 }} /></td>
-                      <td>
-                        <select value={editDraft.reason} onChange={setDraftField("reason")}>
-                          <option value="">-</option>
-                          {reasonsList.map((n) => <option key={n} value={n}>{n}</option>)}
-                        </select>
-                      </td>
-                      <td><input value={editDraft.comment} onChange={setDraftField("comment")} style={{ minWidth: 120 }} /></td>
-                      <td>
-                        <select value={editDraft.substitute || ""} onChange={setDraftField("substitute")} aria-label="מילוי מקום">
-                          <option value="">לא היה</option>
-                          {editDraft.substitute && !settings.teacherNames.includes(editDraft.substitute) && !settings.instructorNames.includes(editDraft.substitute) && (
-                            <option value={editDraft.substitute}>{editDraft.substitute}</option>
-                          )}
-                          <optgroup label="מורים">
-                            {settings.teacherNames.filter((n) => n !== editDraft.name).map((n) => <option key={n} value={n}>{n}</option>)}
-                          </optgroup>
-                          <optgroup label="מדריכים">
-                            {settings.instructorNames.filter((n) => n !== editDraft.name && !settings.teacherNames.includes(n)).map((n) => <option key={n} value={n}>{n}</option>)}
-                          </optgroup>
-                        </select>
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", gap: 4 }}>
-                          <button className="thc-icon-btn thc-icon-save" onClick={saveEdit} aria-label="שמור"><Check size={15} /></button>
-                          <button className="thc-icon-btn" onClick={cancelEdit} aria-label="בטל"><X size={15} /></button>
-                        </div>
+                      <td colSpan={12}>
+                        <EntryEditor draft={editDraft} setDraft={setEditDraft} onSave={saveEdit} onCancel={cancelEdit} settings={settings} namesList={namesList} reasonsList={reasonsList} />
                       </td>
                     </tr>
                   );
@@ -972,11 +985,11 @@ function EntryTable({ entries, onDelete, onUpdate, onDeleteMany, canEdit, export
                     <td><span className="thc-badge" style={dayBadgeStyle(dayOfWeekHebrew(e.date))}>{dayOfWeekHebrew(e.date)}</span></td>
                     <td><span className="thc-badge" style={monthBadgeStyle(e.date)}>{monthHebrew(e.date)}</span></td>
                     <td className="thc-num">{e.hours}</td>
-                    <td>{e.reason}</td>
+                    <td className="thc-reason">{e.reason}</td>
                     <td className="thc-comment">{e.comment}</td>
                     <td className="thc-substitute">{e.substitute}</td>
                     {canEdit && (
-                      <td>
+                      <td className="thc-row-actions">
                         <div style={{ display: "flex", gap: 4 }}>
                           <button className="thc-icon-btn" onClick={() => startEdit(e)} aria-label="ערוך"><Pencil size={15} /></button>
                           <button className="thc-icon-btn" onClick={() => onDelete(e.id)} aria-label="מחק"><Trash2 size={15} /></button>
@@ -2036,17 +2049,6 @@ export default function App() {
           white-space: nowrap;
         }
         .thc-editing-row { background: #FFF9E8 !important; }
-        .thc-editing-row td { padding: 6px 8px; }
-        .thc-editing-row select, .thc-editing-row input {
-          font-family: 'Assistant', sans-serif;
-          font-size: 12.5px;
-          padding: 6px 7px;
-          border: 1px solid var(--gold);
-          border-radius: 6px;
-          background: #FFFFFF;
-        }
-        .thc-icon-save { color: var(--teal); }
-        .thc-icon-save:hover { background: #1B2A4A22; }
         .thc-comment { white-space: normal; min-width: 140px; color: var(--ink-soft); }
 
         .thc-ranking tbody tr.thc-top td { font-weight: 700; background: #FFF1E0; }
