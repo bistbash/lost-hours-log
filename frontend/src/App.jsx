@@ -1035,7 +1035,7 @@ function exportSummaryCSV(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
-function exportSubstitutesCSV(rows, kinds) {
+function exportSubstitutesCSV(rows, kinds, filename) {
   const esc = (v) => `"${(v ?? "").toString().replace(/"/g, '""')}"`;
   const headers = ["דירוג", "שם", "תפקיד", "שעות מילוי מקום", "פעמים", "אנשים שהוחלפו", "אחרונה"];
   const body = rows.map((r, i) => [i + 1, r.name, kinds[r.name], r.hours, r.count, r.helped, r.last].map(esc).join(","));
@@ -1043,31 +1043,49 @@ function exportSubstitutesCSV(rows, kinds) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "ממלאי-מקום.csv";
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
 
 const medal = (i) => (i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`);
 
-/** Who filled in the most, teachers and instructors together. */
+/** Whose fills the ranking shows: `kind` is how substituteOptions names the role. Someone in both lists is in both. */
+const FILLERS = { all: { label: "כולם" }, teachers: { label: "מורים", kind: "מורה" }, instructors: { label: "מדריכים", kind: "מדריך/ה" } };
+
+/** Who filled in the most. Has its own role and dates, apart from the lost hours ranking above it. */
 function SubstitutesRanking({ entries, settings, onPickPerson }) {
+  const [who, setWho] = useState("all");
+  const [range, setRange] = useState({ from: "", to: "" });
   const [showAll, setShowAll] = useState(false);
-  const rows = useMemo(() => substitutes(entries), [entries]);
+  const { label, kind } = FILLERS[who];
+  const inDates = useMemo(() => inRange(entries, range.from, range.to), [entries, range]);
+  const everyone = useMemo(() => substitutes(inDates), [inDates]);
   const { kinds } = useMemo(() => substituteOptions(settings), [settings]);
-  const total = sumHours(rows);
+  const rows = kind ? everyone.filter((r) => kinds[r.name]?.includes(kind)) : everyone;
+  const total = sumHours(everyone);
+  const shown = sumHours(rows);
+  const shownText = shown === 1 ? "שעה אחת" : `${fmt(shown)} שעות`;
   return (
     <div className="thc-card">
-      <div className="thc-subject-header">
-        <h3>מי נרתם למילוי מקום</h3>
-        <div className="thc-ranking-actions">
-          {rows.length > 10 && <button className="thc-ghost-btn" onClick={() => setShowAll((s) => !s)}>{showAll ? "הצג רק 10 מובילים" : `הצג את כל ${rows.length}`}</button>}
-          {rows.length > 0 && <button className="thc-ghost-btn" onClick={() => exportSubstitutesCSV(rows, kinds)}><Download size={15} /> ייצוא ל-CSV</button>}
+      <h3>מי נרתם למילוי מקום</h3>
+      <div className="thc-reports-toolbar">
+        <div className="thc-seg">
+          {Object.entries(FILLERS).map(([v, f]) => (
+            <button key={v} className={who === v ? "active" : ""} onClick={() => setWho(v)}>{f.label}</button>
+          ))}
         </div>
+        <RangeBar from={range.from} to={range.to} onChange={(from, to) => setRange({ from, to })} />
+        {rows.length > 10 && <button className="thc-ghost-btn" onClick={() => setShowAll((s) => !s)}>{showAll ? "הצג רק 10 מובילים" : `הצג את כל ${rows.length}`}</button>}
+        {rows.length > 0 && <button className="thc-ghost-btn" onClick={() => exportSubstitutesCSV(rows, kinds, `ממלאי-מקום${kind ? `-${label}` : ""}.csv`)}><Download size={15} /> ייצוא ל-CSV</button>}
       </div>
-      <p className="thc-muted">מורים ומדריכים יחד, בטווח התאריכים שנבחר למעלה. {rows.length > 0 && <>סה"כ כוסו <b>{total === 1 ? "שעה אחת" : `${fmt(total)} שעות`}</b>, {pct(total, sumHours(entries))} מהשעות שאבדו.</>}</p>
+      {rows.length > 0 && (
+        <p className="thc-muted">{kind
+          ? <>ה{label} כיסו <b>{shownText}</b>, {pct(shown, total)} ממילויי המקום.</>
+          : <>סה"כ כוסו <b>{shownText}</b>, {pct(total, sumHours(inDates))} מהשעות שאבדו.</>}</p>
+      )}
       {rows.length === 0 ? (
-        <p className="thc-empty">לא נרשם מילוי מקום בטווח שנבחר.</p>
+        <p className="thc-empty">לא נרשם מילוי מקום{kind && ` של ${label}`} בטווח שנבחר.</p>
       ) : (
         <div className="thc-table-wrap">
           <table className="thc-table thc-ranking">
@@ -1100,7 +1118,7 @@ function SummaryTab({ teacherEntries, instructorEntries, settings, onPickPerson 
 
   const source = dataset === "teachers" ? teacherEntries : instructorEntries;
   const ranked = useMemo(() => peopleOf(inRange(source, range.from, range.to)), [source, range]);
-  const everyone = useMemo(() => inRange([...teacherEntries, ...instructorEntries], range.from, range.to), [teacherEntries, instructorEntries, range]);
+  const everyone = useMemo(() => [...teacherEntries, ...instructorEntries], [teacherEntries, instructorEntries]);
 
   const visibleRanked = showAll ? ranked : ranked.slice(0, 10);
 
